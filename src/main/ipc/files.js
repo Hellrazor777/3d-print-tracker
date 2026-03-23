@@ -144,4 +144,18 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
     try { await shell.openExternal(url); return true; }
     catch(e) { return false; }
   });
+
+  // ── Get Bambu Studio version ──
+  ipcMain.handle('get-bambu-version', async (_, exePath) => {
+    if (!exePath || !fs.existsSync(exePath)) return null;
+    const safePath = exePath.replace(/'/g, "''");
+    return new Promise(resolve => {
+      execFile('powershell', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `(Get-Item '${safePath}').VersionInfo.FileVersion`
+      ], { timeout: 8000 }, (err, stdout) => {
+        resolve(err ? null : (stdout.trim() || null));
+      });
+    });
+  });
 };

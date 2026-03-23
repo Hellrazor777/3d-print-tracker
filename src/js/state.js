@@ -53,6 +53,8 @@ async function init() {
   }
   applyTheme(appSettings.theme || 'auto');
   render();
+  // Check Bambu Studio version after UI is ready
+  if (window.electronAPI) setTimeout(() => checkBambuVersion().catch(() => {}), 1500);
 }
 
 async function persist() {

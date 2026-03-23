@@ -1,4 +1,53 @@
 // ── 3MF FILE HANDLING ──
+
+// Returns true = proceed, false = go back
+async function checkBambuVersion() {
+  if (!window.electronAPI || !window.electronAPI.getBambuVersion) return true;
+  if ((appSettings.slicer || 'bambu') !== 'bambu') return true;
+  const exePath = appSettings.bambuPath || 'C:\\Program Files\\Bambu Studio\\bambu-studio.exe';
+  const current = await window.electronAPI.getBambuVersion(exePath);
+  if (!current) return true; // can't detect — don't block
+  const approved = appSettings.approvedBambuVersion;
+  if (!approved) {
+    // First run — silently approve current version
+    appSettings.approvedBambuVersion = current;
+    if (window.electronAPI.saveSettings) await window.electronAPI.saveSettings(appSettings);
+    return true;
+  }
+  if (current === approved) return true; // same version, all good
+  // Different (newer) version detected — ask user
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+    overlay.innerHTML =
+      '<div style="background:var(--bg);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem;width:360px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.2)">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+          '<span style="font-size:22px">⚠️</span>' +
+          '<h3 style="font-size:15px;font-weight:600;color:var(--text)">Bambu Studio update detected</h3>' +
+        '</div>' +
+        '<p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:6px">' +
+          '<strong style="color:var(--text)">' + esc(current) + '</strong> is installed, which is newer than the approved version <strong style="color:var(--text)">' + esc(approved) + '</strong>.' +
+        '</p>' +
+        '<p style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:1.25rem">' +
+          'Newer versions may have compatibility issues with command line operations.' +
+        '</p>' +
+        '<div style="display:flex;flex-direction:column;gap:8px">' +
+          '<button id="bv-allow-perm" class="btn btn-primary" style="width:100%;font-size:13px;padding:9px">Allow permanently</button>' +
+          '<button id="bv-allow-once" class="btn" style="width:100%;font-size:13px;padding:9px">Allow this time</button>' +
+          '<button id="bv-go-back" class="btn" style="width:100%;font-size:13px;padding:9px;color:var(--red-text);border-color:var(--red-text)">Go Back</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#bv-allow-perm').addEventListener('click', async () => {
+      appSettings.approvedBambuVersion = current;
+      if (window.electronAPI.saveSettings) await window.electronAPI.saveSettings(appSettings);
+      overlay.remove(); resolve(true);
+    });
+    overlay.querySelector('#bv-allow-once').addEventListener('click', () => { overlay.remove(); resolve(true); });
+    overlay.querySelector('#bv-go-back').addEventListener('click', () => { overlay.remove(); resolve(false); });
+  });
+}
 async function uploadProduct3mf(productName) {
   if (!window.electronAPI) return;
   if (!appSettings.threeMfFolder) { alert('Please set your 3MF folder in Settings first.'); openSettings(); return; }
@@ -63,6 +112,8 @@ async function openProductFolder(productName) {
 async function openProductInSlicer(productName) {
   if (!window.electronAPI) return;
   if (!appSettings.threeMfFolder) { alert('Please set your 3MF folder in Settings first.'); openSettings(); return; }
+  const proceed = await checkBambuVersion();
+  if (!proceed) return;
   const folder = await window.electronAPI.getProductFolder(productName, appSettings.threeMfFolder);
   if (!folder) return;
   const result = await window.electronAPI.openInSlicer(folder, appSettings.slicer || 'bambu');

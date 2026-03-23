@@ -19,4 +19,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadImage:       (url, destFolder, fileName) => ipcRenderer.invoke('download-image', { url, destFolder, fileName }),
   uploadImage:         (destFolder, fileName)      => ipcRenderer.invoke('upload-image', { destFolder, fileName }),
   openExternal:        (url)                         => ipcRenderer.invoke('open-external', url),
+  getBambuVersion:     (exePath)                     => ipcRenderer.invoke('get-bambu-version', exePath),
 });
