@@ -6,6 +6,7 @@ const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
 const PORT = 3000;
 let localServer = null;
 let mainWin = null;
+let actualPort = PORT;
 
 // Import IPC and server modules
 const registerDataHandlers = require('./src/main/ipc/data');
@@ -32,13 +33,13 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  // Register IPC handlers
-  registerDataHandlers(ipcMain, DATA_PATH, SETTINGS_PATH, PORT);
+  // Register IPC handlers (getPort returns actual bound port after server starts)
+  registerDataHandlers(ipcMain, DATA_PATH, SETTINGS_PATH, () => actualPort);
   registerFilesHandlers(ipcMain, mainWin, dataModule.loadSettings.bind(null, SETTINGS_PATH));
   registerN3dHandlers(ipcMain);
 
-  // Start local server
-  localServer = startLocalServer(PORT, DATA_PATH, mainWin);
+  // Start local server — auto-retries on EADDRINUSE, updates actualPort when bound
+  localServer = startLocalServer(PORT, DATA_PATH, mainWin, (port) => { actualPort = port; });
 
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

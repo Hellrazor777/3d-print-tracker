@@ -21,7 +21,7 @@ function saveSettings(SETTINGS_PATH, s) {
   catch(e) { return false; }
 }
 
-module.exports = function registerDataHandlers(ipcMain, DATA_PATH, SETTINGS_PATH, PORT) {
+module.exports = function registerDataHandlers(ipcMain, DATA_PATH, SETTINGS_PATH, getPort) {
   // ── Data persistence ──
   ipcMain.handle('load-data', () => {
     try { if (fs.existsSync(DATA_PATH)) return JSON.parse(fs.readFileSync(DATA_PATH, 'utf8')); }
@@ -34,7 +34,7 @@ module.exports = function registerDataHandlers(ipcMain, DATA_PATH, SETTINGS_PATH
     catch(e) { return false; }
   });
 
-  ipcMain.handle('get-local-ip', () => getLocalIP() + ':' + PORT);
+  ipcMain.handle('get-local-ip', () => getLocalIP() + ':' + (typeof getPort === 'function' ? getPort() : getPort));
 
   // ── Settings ──
   ipcMain.handle('load-settings', () => loadSettings(SETTINGS_PATH));

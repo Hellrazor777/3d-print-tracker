@@ -63,6 +63,29 @@ async function n3dLoadPage(page) {
 
 const n3dDesignCache = new Map();
 
+function n3dSelectAll() {
+  const cards = document.querySelectorAll('#n3d-grid [data-slug]');
+  const allSel = [...cards].every(c => n3dSelected.has(c.dataset.slug));
+  if (allSel) {
+    cards.forEach(c => n3dSelected.delete(c.dataset.slug));
+  } else {
+    cards.forEach(c => {
+      const slug = c.dataset.slug;
+      if (!n3dSelected.has(slug)) n3dSelected.set(slug, n3dDesignCache.get(slug));
+    });
+  }
+  cards.forEach(c => {
+    const slug = c.dataset.slug;
+    const sel = n3dSelected.has(slug);
+    c.style.border = sel ? '2px solid #378add' : '0.5px solid var(--border2)';
+    const titleEl = c.querySelector('.n3d-card-title');
+    const checkEl = c.querySelector('.n3d-card-check');
+    if (titleEl) titleEl.style.color = sel ? 'var(--info-text)' : 'var(--text)';
+    if (checkEl) checkEl.style.display = sel ? 'flex' : 'none';
+  });
+  n3dUpdateBar();
+}
+
 function n3dRenderGrid(designs, pag) {
   const grid = document.getElementById('n3d-grid');
   if (!designs.length) { grid.innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;font-size:13px;color:var(--text2)">no designs found</div>'; return; }
@@ -88,6 +111,12 @@ function n3dRenderGrid(designs, pag) {
         ? '<div style="position:absolute;top:6px;right:6px;background:rgba(30,100,20,.75);color:#c8f0a0;font-size:9px;font-weight:600;padding:2px 5px;border-radius:4px;letter-spacing:.03em">✓ owned</div>'
         : '';
 
+    // Already-in-tracker badge
+    const inTracker = typeof products !== 'undefined' && products[d.title];
+    const trackerBadge = inTracker
+      ? '<div style="position:absolute;bottom:6px;left:6px;background:rgba(20,60,120,.75);color:#aad4f5;font-size:9px;font-weight:600;padding:2px 5px;border-radius:4px;letter-spacing:.03em">✓ in tracker</div>'
+      : '';
+
     const card = document.createElement('div');
     card.dataset.slug = d.slug;
     card.style.cssText = 'background:var(--bg);border:' + (sel ? '2px solid #378add' : '0.5px solid var(--border2)') + ';border-radius:var(--radius-lg);overflow:hidden;cursor:pointer;transition:border-color .12s;position:relative';
@@ -97,6 +126,7 @@ function n3dRenderGrid(designs, pag) {
           ? '<img src="' + d.image_url + '" style="width:100%;aspect-ratio:1;object-fit:cover;display:block;background:var(--bg2)" loading="lazy" onerror="this.style.display=\'none\'">'
           : '<div style="width:100%;aspect-ratio:1;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text3)">no image</div>') +
         entitledBadge +
+        trackerBadge +
       '</div>' +
       '<div style="padding:10px 12px">' +
         '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">' +
@@ -163,7 +193,7 @@ async function n3dImportSelected() {
       products[productName] = { category: importCat || d.category || '' };
       if (d.slug) products[productName].n3dUrl = 'https://www.n3dmelbourne.com/design/' + d.slug;
       products[productName].designer = 'N3D Melbourne';
-      products[productName].source = 'patreon';
+      products[productName].source = 'n3d-membership';
       autoCreateProductFolder(productName);
       if (d.image_url && window.electronAPI && appSettings.threeMfFolder) {
         window.electronAPI.getProductFolder(productName, appSettings.threeMfFolder).then(async folder => {

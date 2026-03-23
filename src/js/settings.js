@@ -53,14 +53,22 @@ function initSettingsSections() {
   });
 }
 
+// ── CATEGORY ORDER HELPER ──
+function getCategoryOrder() {
+  const allCats = [...new Set([
+    ...Object.values(products).map(p => p.category).filter(Boolean),
+    ...(appSettings.extraCategories || [])
+  ])];
+  const ordered = appSettings.categoryOrder || [];
+  const unordered = allCats.filter(c => !ordered.includes(c));
+  return [...ordered.filter(c => allCats.includes(c)), ...unordered];
+}
+
 // ── CATEGORY SELECT HELPER ──
 function populateCategorySelect(selectId, currentVal) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
-  const cats = [...new Set([
-    ...Object.values(products).map(p => p.category).filter(Boolean),
-    ...(appSettings.extraCategories || [])
-  ])].sort();
+  const cats = getCategoryOrder();
   sel.innerHTML = '<option value="">— no category —</option>';
   cats.forEach(c => {
     const o = document.createElement('option');
@@ -76,17 +84,41 @@ let _renameCatTarget = null;
 function renderCategoryManager() {
   const wrap = document.getElementById('category-manager');
   if (!wrap) return;
-  const extraCats = (appSettings.extraCategories || []);
-  const usedCats = [...new Set(Object.values(products).map(p=>p.category).filter(Boolean))];
-  const cats = [...new Set([...usedCats, ...extraCats])].sort();
+  const cats = getCategoryOrder();
   if (!cats.length) { wrap.innerHTML = '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">No categories yet</div>'; return; }
   wrap.innerHTML = '';
-  cats.forEach(cat => {
+  cats.forEach((cat, idx) => {
     const row = document.createElement('div');
     row.className = 'cat-row';
     const name = document.createElement('span');
     name.className = 'cat-row-name';
     name.textContent = cat;
+    const upBtn = document.createElement('button');
+    upBtn.className = 'btn cat-row-btn';
+    upBtn.textContent = '↑';
+    upBtn.title = 'Move up';
+    upBtn.disabled = idx === 0;
+    upBtn.addEventListener('click', async () => {
+      const order = getCategoryOrder();
+      [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
+      appSettings.categoryOrder = order;
+      if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+      renderCategoryManager();
+      renderProductView();
+    });
+    const downBtn = document.createElement('button');
+    downBtn.className = 'btn cat-row-btn';
+    downBtn.textContent = '↓';
+    downBtn.title = 'Move down';
+    downBtn.disabled = idx === cats.length - 1;
+    downBtn.addEventListener('click', async () => {
+      const order = getCategoryOrder();
+      [order[idx], order[idx + 1]] = [order[idx + 1], order[idx]];
+      appSettings.categoryOrder = order;
+      if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+      renderCategoryManager();
+      renderProductView();
+    });
     const renameBtn = document.createElement('button');
     renameBtn.className = 'btn cat-row-btn';
     renameBtn.textContent = 'Rename';
@@ -99,10 +131,11 @@ function renderCategoryManager() {
       if (!confirm('Remove category "' + cat + '" from all products?')) return;
       Object.keys(products).forEach(k => { if (products[k].category === cat) products[k].category = ''; });
       if (appSettings.extraCategories) appSettings.extraCategories = appSettings.extraCategories.filter(c => c !== cat);
+      if (appSettings.categoryOrder) appSettings.categoryOrder = appSettings.categoryOrder.filter(c => c !== cat);
       if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
-      await persist(); renderCategoryManager();
+      await persist(); renderCategoryManager(); renderProductView();
     });
-    row.appendChild(name); row.appendChild(renameBtn); row.appendChild(delBtn);
+    row.appendChild(name); row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(renameBtn); row.appendChild(delBtn);
     wrap.appendChild(row);
   });
 }
@@ -129,10 +162,14 @@ async function confirmRenameCat() {
     const idx = appSettings.extraCategories.indexOf(old);
     if (idx !== -1) appSettings.extraCategories[idx] = newCat;
   }
+  if (appSettings.categoryOrder) {
+    const idx = appSettings.categoryOrder.indexOf(old);
+    if (idx !== -1) appSettings.categoryOrder[idx] = newCat;
+  }
   if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
   await persist();
   closeRenameCat();
-  renderCategoryManager();
+  renderCategoryManager(); renderProductView();
 }
 
 async function addCategory() {
@@ -142,6 +179,8 @@ async function addCategory() {
   input.value = '';
   if (!appSettings.extraCategories) appSettings.extraCategories = [];
   if (!appSettings.extraCategories.includes(name)) appSettings.extraCategories.push(name);
+  if (!appSettings.categoryOrder) appSettings.categoryOrder = getCategoryOrder();
+  if (!appSettings.categoryOrder.includes(name)) appSettings.categoryOrder.push(name);
   if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
   renderCategoryManager();
 }
@@ -347,6 +386,7 @@ async function openSettings() {
   document.getElementById('s-slicer').value = appSettings.slicer || 'bambu';
   document.getElementById('s-bambu-path').value = appSettings.bambuPath || '';
   document.getElementById('s-orca-path').value = appSettings.orcaPath || '';
+  document.getElementById('s-inv-popup').checked = appSettings.invPopup !== false;
   await setTheme(appSettings.theme || 'auto');
   renderCategoryManager();
   renderStorageLocationManager();
@@ -365,7 +405,9 @@ async function saveSettingsModal() {
   appSettings.slicer = document.getElementById('s-slicer').value;
   appSettings.bambuPath = document.getElementById('s-bambu-path').value;
   appSettings.orcaPath = document.getElementById('s-orca-path').value;
+  appSettings.invPopup = document.getElementById('s-inv-popup').checked;
   if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
   closeSettings();
   renderInventoryView();
+  renderProductView();
 }

@@ -1,6 +1,6 @@
 {
   "name": "3d-print-tracker",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Track your 3D printing jobs, parts and projects",
   "main": "main.js",
   "scripts": {

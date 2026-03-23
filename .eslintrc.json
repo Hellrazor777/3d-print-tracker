@@ -122,7 +122,9 @@
         "saveSettingsModal": "readonly",
         "pick3mfFolder": "readonly",
         "addCategory": "readonly",
+        "getCategoryOrder": "readonly",
         "renderCategoryManager": "readonly",
+        "renderProductView": "readonly",
         "getStorageLocations": "readonly",
         "renderStorageLocationManager": "readonly",
         "addStorageLocation": "readonly",
@@ -144,7 +146,16 @@
         "n3dDebounce": "readonly",
         "n3dImportSelected": "readonly",
         "n3dUpdateBar": "readonly",
-        "checkBambuVersion": "readonly"
+        "checkBambuVersion": "readonly",
+        "quickAddToInventory": "readonly",
+        "n3dSelectAll": "readonly",
+        "openQuickAddModal": "readonly",
+        "renderQuickAddLocations": "readonly",
+        "adjustQuickAddQty": "readonly",
+        "closeQuickAddModal": "readonly",
+        "confirmQuickAdd": "readonly",
+        "invSyncStorage": "readonly",
+        "quickAddLocations": "writable"
       }
     }
   ]

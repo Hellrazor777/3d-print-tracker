@@ -74,3 +74,4 @@
 - v2.0.0 — Category grouping, colour view, sub-parts, inventory, N3D integration, mobile companion
 - v2.1.0 — UI polish, theme toggle, category manager, pre-sliced 3MF flag, manage modal, custom icon
 - Codebase refactor — split index.html (2489 lines) and main.js into modular files
+- v3.0.0 — Printing/Commenced/Ready workflow, main search, + inv popup, N3D select-all, stocktake mode, mobile collapsible sections, port auto-retry

@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-function startLocalServer(PORT, DATA_PATH, mainWin) {
+function startLocalServer(PORT, DATA_PATH, mainWin, onListening) {
   const mobileHtmlPath = path.join(__dirname, '..', 'mobile.html');
   const localServer = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -51,8 +51,25 @@ function startLocalServer(PORT, DATA_PATH, mainWin) {
 
     res.writeHead(404); res.end('Not found');
   });
-  localServer.listen(PORT, '0.0.0.0', () => console.log('Mobile server running on port', PORT));
-  localServer.on('error', e => console.error('Server error:', e.message));
+  let currentPort = PORT;
+
+  localServer.on('listening', () => {
+    console.log('Mobile server running on port', currentPort);
+    if (onListening) onListening(currentPort);
+  });
+
+  localServer.on('error', e => {
+    if (e.code === 'EADDRINUSE' && currentPort < PORT + 10) {
+      currentPort++;
+      console.log('Port in use, trying', currentPort);
+      localServer.close();
+      localServer.listen(currentPort, '0.0.0.0');
+    } else {
+      console.error('Mobile server error:', e.message);
+    }
+  });
+
+  localServer.listen(currentPort, '0.0.0.0');
   return localServer;
 }
 

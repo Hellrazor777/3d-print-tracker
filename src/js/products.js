@@ -1,20 +1,38 @@
+let productSearch = '';
+
 function renderProductView() {
   const container = document.getElementById('view-product');
   const items = getItems().filter(i => !products[i]?.archived);
   items.forEach(it=>{ if(!products[it]) products[it]={category:''}; });
 
-  // Separate in-progress (printing/ready to build) from others
-  // Apply 3MF filter
-  const filteredItems = sliceFilter === 'presliced' ? items.filter(i => productHas3mf(i) && products[i]?.preSliced)
+  // Apply 3MF filter then search
+  const sliceFiltered = sliceFilter === 'presliced' ? items.filter(i => productHas3mf(i) && products[i]?.preSliced)
     : sliceFilter === 'sliced' ? items.filter(i => productHas3mf(i))
     : sliceFilter === 'unsliced' ? items.filter(i => !productHas3mf(i))
     : items;
+  const q = productSearch.trim().toLowerCase();
+  const filteredItems = q ? sliceFiltered.filter(i =>
+    i.toLowerCase().includes(q) ||
+    (products[i]?.category||'').toLowerCase().includes(q) ||
+    parts.some(p => p.item === i && p.name.toLowerCase().includes(q))
+  ) : sliceFiltered;
 
-  const inProgressItems = filteredItems.filter(item => {
+  // printing = any part currently being printed
+  const printingItems = filteredItems.filter(item => {
     const ps = parts.filter(p=>p.item===item);
-    return ps.some(p=>p.status==='printing') || isReady(item);
+    return ps.some(p=>p.status==='printing');
   });
-  const otherItems = filteredItems.filter(i => !inProgressItems.includes(i));
+  // ready to build = all parts done
+  const readyItems = filteredItems.filter(item => isReady(item));
+  // commenced = any part done, nothing printing, not fully done
+  const commencedItems = filteredItems.filter(item => {
+    if (isReady(item)) return false;
+    const ps = parts.filter(p=>p.item===item);
+    if (ps.some(p=>p.status==='printing')) return false;
+    return ps.some(p=>p.status==='done');
+  });
+  const activeItems = [...printingItems, ...commencedItems, ...readyItems];
+  const otherItems = filteredItems.filter(i => !activeItems.includes(i));
 
   // Group other items by category
   const cats = {};
@@ -51,22 +69,60 @@ function renderProductView() {
     info.style.cssText = 'font-size:12px;color:var(--text2);margin-left:4px';
     info.textContent = preSlicedCount + ' pre-sliced · ' + slicedCount + '/' + allItems2.length + ' have 3MF';
     filterBar.appendChild(info);
+    // Search input
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.placeholder = 'search products…';
+    searchInput.value = productSearch;
+    searchInput.style.cssText = 'font-size:12px;padding:4px 10px;border-radius:var(--radius);border:0.5px solid var(--border2);background:var(--bg2);color:var(--text);width:160px;font-family:inherit;outline:none;margin-left:auto';
+    searchInput.addEventListener('input', function() {
+      productSearch = this.value;
+      const cursorPos = this.selectionStart;
+      renderProductView();
+      const bar2 = document.getElementById('product-filter-bar');
+      if (bar2) {
+        const inp2 = bar2.querySelector('input[type="search"]');
+        if (inp2) { inp2.focus(); try { inp2.setSelectionRange(cursorPos, cursorPos); } catch(e2) {} }
+      }
+    });
+    filterBar.appendChild(searchInput);
   }
 
-  // ── In progress section ──
-  if (inProgressItems.length) {
-    const sec = buildSection('in progress', inProgressItems, 'var(--blue-text)', true);
+  // ── Printing section ──
+  if (printingItems.length) {
+    const sec = buildSection('printing', printingItems, 'var(--amber-text)', true);
+    container.appendChild(sec);
+  }
+
+  // ── Commenced section ──
+  if (commencedItems.length) {
+    const sec = buildSection('commenced', commencedItems, 'var(--blue-text)', true);
+    container.appendChild(sec);
+  }
+
+  // ── Ready to build section ──
+  if (readyItems.length) {
+    const sec = buildSection('ready to build', readyItems, 'var(--green)', true);
     container.appendChild(sec);
   }
 
   // ── Category sections ──
-  const sortedCats = Object.keys(cats).sort((a,b) => a==='uncategorised'?1:b==='uncategorised'?-1:a.localeCompare(b));
+  const catOrder = typeof getCategoryOrder === 'function' ? getCategoryOrder() : [];
+  const sortedCats = Object.keys(cats).sort((a, b) => {
+    if (a === 'uncategorised') return 1;
+    if (b === 'uncategorised') return -1;
+    const ai = catOrder.indexOf(a), bi = catOrder.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
   sortedCats.forEach(cat => {
     const sec = buildSection(cat, cats[cat].sort((a,b)=>a.localeCompare(b)), null, false);
     container.appendChild(sec);
   });
 
-  if (!inProgressItems.length && !otherItems.length) {
+  if (!activeItems.length && !otherItems.length) {
     container.innerHTML = '<p style="color:var(--text2);padding:1rem 0">no parts yet — add a product to get started.</p>';
   }
 }
@@ -92,7 +148,18 @@ function buildSection(title, itemList, titleColor, defaultOpen) {
   const count = document.createElement('span');
   count.style.cssText = 'font-size:11px;color:var(--text3);margin-left:2px';
   count.textContent = '(' + itemList.length + ')';
-  hdr.appendChild(chevron); hdr.appendChild(label); hdr.appendChild(count);
+  const allExpanded = itemList.every(i => openProducts.has(i));
+  const expandAllBtn = document.createElement('button');
+  expandAllBtn.style.cssText = 'margin-left:auto;font-size:11px;padding:2px 8px;border-radius:var(--radius);border:0.5px solid var(--border2);background:transparent;color:var(--text3);cursor:pointer;white-space:nowrap;font-family:inherit';
+  expandAllBtn.textContent = allExpanded ? '− collapse all' : '+ expand all';
+  expandAllBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (allExpanded) itemList.forEach(i => openProducts.delete(i));
+    else itemList.forEach(i => openProducts.add(i));
+    renderProductView();
+  });
+
+  hdr.appendChild(chevron); hdr.appendChild(label); hdr.appendChild(count); hdr.appendChild(expandAllBtn);
   hdr.addEventListener('click', () => {
     if (catExpanded.has(title)) {
       catExpanded.delete(title);
@@ -167,6 +234,13 @@ function buildSection(title, itemList, titleColor, defaultOpen) {
     uploadBtn.addEventListener('click', (function(n){ return function(e){ e.stopPropagation(); uploadProduct3mf(n); }; })(item));
 
     titleWrap.appendChild(titleSpan); titleWrap.appendChild(renameBtn); titleWrap.appendChild(archiveBtn); titleWrap.appendChild(folderBtn); titleWrap.appendChild(slicerBtn); titleWrap.appendChild(uploadBtn);
+    if (appSettings.invPopup !== false) {
+      const invBtn = document.createElement('button');
+      invBtn.className = 'rename-btn'; invBtn.title = 'add to inventory'; invBtn.textContent = '+ inv';
+      invBtn.style.cssText = 'font-size:12px;color:var(--green-dark)';
+      invBtn.addEventListener('click', (function(n){ return function(e){ e.stopPropagation(); openQuickAddModal(n); }; })(item));
+      titleWrap.appendChild(invBtn);
+    }
 
     // N3D website link button
     if (products[item]?.n3dUrl) {

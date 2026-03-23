@@ -118,14 +118,18 @@
 
 <div class="header">
   <div style="flex:1">
-    <h1>Inventory</h1>
+    <h1 id="header-title">Inventory</h1>
     <div class="header-sub" id="last-sync">loading...</div>
   </div>
-  <button class="dest-btn" onclick="reload()" style="padding:8px 14px;font-size:13px;margin:0">refresh</button>
+  <button id="stocktake-btn" class="dest-btn" onclick="enterStocktake()" style="padding:8px 14px;font-size:13px;margin:0;margin-right:8px">Stocktake</button>
+  <button class="dest-btn" onclick="reload()" style="padding:8px 14px;font-size:13px;margin:0">Refresh</button>
 </div>
 
-<div class="search-bar">
+<div class="search-bar" id="search-bar">
   <input type="search" id="search" placeholder="search products..." oninput="renderList()" autocomplete="off"/>
+</div>
+<div class="search-bar" id="stocktake-search-bar" style="display:none">
+  <input type="search" id="stocktake-search" placeholder="search stocktake..." oninput="renderStocktake()" autocomplete="off"/>
 </div>
 
 <div class="list" id="list"><div class="loading">loading inventory...</div></div>
@@ -151,6 +155,10 @@ let inventory = [];
 let expandedId = null;
 let logQty = 1;
 let selectedDest = 'store';
+let outgoingCollapsed = new Set();
+let historyCollapsed = new Set();
+let appMode = 'inventory'; // 'inventory' | 'stocktake'
+let stocktakeLocation = null;
 
 async function reload() {
   try {
@@ -158,11 +166,122 @@ async function reload() {
     const data = await res.json();
     inventory = data.inventory || [];
     document.getElementById('last-sync').textContent = 'updated ' + new Date().toLocaleTimeString();
-    renderList();
+    if (appMode === 'stocktake') renderStocktake();
+    else renderList();
   } catch(e) {
     document.getElementById('last-sync').textContent = 'could not connect to app';
     document.getElementById('list').innerHTML = '<div class="empty">Make sure the 3D Print Tracker app is open on your PC.</div>';
   }
+}
+
+function getLocationsFromInventory() {
+  const locs = new Set();
+  inventory.forEach(item => {
+    if (item.storage) Object.keys(item.storage).forEach(l => { if (l) locs.add(l); });
+  });
+  return [...locs];
+}
+
+function enterStocktake() {
+  appMode = 'stocktake';
+  stocktakeLocation = getLocationsFromInventory()[0] || null;
+  document.getElementById('header-title').textContent = 'Stocktake';
+  document.getElementById('stocktake-btn').textContent = '← Back';
+  document.getElementById('stocktake-btn').onclick = exitStocktake;
+  document.getElementById('search-bar').style.display = 'none';
+  document.getElementById('stocktake-search-bar').style.display = '';
+  document.querySelector('.fab').style.display = 'none';
+  renderStocktake();
+}
+
+function exitStocktake() {
+  appMode = 'inventory';
+  document.getElementById('header-title').textContent = 'Inventory';
+  document.getElementById('stocktake-btn').textContent = 'Stocktake';
+  document.getElementById('stocktake-btn').onclick = enterStocktake;
+  document.getElementById('search-bar').style.display = '';
+  document.getElementById('stocktake-search-bar').style.display = 'none';
+  document.querySelector('.fab').style.display = '';
+  renderList();
+}
+
+function renderStocktake() {
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  const locs = getLocationsFromInventory();
+
+  // Location filter tabs
+  if (locs.length) {
+    if (!stocktakeLocation || !locs.includes(stocktakeLocation)) stocktakeLocation = locs[0];
+    const tabBar = document.createElement('div');
+    tabBar.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px';
+    locs.forEach(loc => {
+      const btn = document.createElement('button');
+      const active = loc === stocktakeLocation;
+      btn.style.cssText = 'padding:12px 20px;border:0.5px solid var(--border2);border-radius:var(--radius);background:' + (active?'var(--blue-bg)':'var(--bg2)') + ';color:' + (active?'var(--blue-text)':'var(--text)') + ';font-size:17px;font-weight:' + (active?'600':'400') + ';cursor:pointer;text-transform:capitalize;font-family:inherit';
+      btn.textContent = loc;
+      btn.onclick = () => { stocktakeLocation = loc; renderStocktake(); };
+      tabBar.appendChild(btn);
+    });
+    list.appendChild(tabBar);
+  }
+
+  const stq = (document.getElementById('stocktake-search')?.value || '').toLowerCase();
+  const locFiltered = stocktakeLocation
+    ? inventory.filter(i => i.storage && (i.storage[stocktakeLocation]||0) > 0)
+    : inventory;
+  const items = stq ? locFiltered.filter(i => i.name.toLowerCase().includes(stq)) : locFiltered;
+
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = stocktakeLocation ? 'no items in ' + stocktakeLocation : 'no inventory yet';
+    list.appendChild(empty);
+    return;
+  }
+
+  items.forEach(item => {
+    const qty = stocktakeLocation ? (item.storage?.[stocktakeLocation]||0) : calcOnHand(item);
+    const card = document.createElement('div');
+    card.className = 'inv-card';
+    card.style.padding = '18px 20px';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'inv-name';
+    nameEl.style.marginBottom = '14px';
+    nameEl.textContent = item.name;
+    const ctrl = document.createElement('div');
+    ctrl.style.cssText = 'display:flex;align-items:center;gap:0';
+    const minusBtn = document.createElement('button');
+    minusBtn.className = 'count-btn';
+    minusBtn.style.borderRadius = 'var(--radius) 0 0 var(--radius)';
+    minusBtn.textContent = '−';
+    minusBtn.onclick = (function(id){ return function(){ adjustStocktake(id, -1); }; })(item.id);
+    const valEl = document.createElement('div');
+    valEl.className = 'count-val';
+    valEl.id = 'st-' + item.id;
+    valEl.textContent = qty;
+    const plusBtn = document.createElement('button');
+    plusBtn.className = 'count-btn';
+    plusBtn.style.borderRadius = '0 var(--radius) var(--radius) 0';
+    plusBtn.textContent = '+';
+    plusBtn.onclick = (function(id){ return function(){ adjustStocktake(id, 1); }; })(item.id);
+    ctrl.appendChild(minusBtn); ctrl.appendChild(valEl); ctrl.appendChild(plusBtn);
+    card.appendChild(nameEl); card.appendChild(ctrl);
+    list.appendChild(card);
+  });
+}
+
+async function adjustStocktake(id, delta) {
+  const item = inventory.find(i => i.id === id);
+  if (!item || !stocktakeLocation) return;
+  if (!item.storage) item.storage = {};
+  const newVal = Math.max(0, (item.storage[stocktakeLocation]||0) + delta);
+  const diff = newVal - (item.storage[stocktakeLocation]||0);
+  item.storage[stocktakeLocation] = newVal;
+  item.built = Math.max(0, (item.built||0) + diff);
+  const el = document.getElementById('st-' + id);
+  if (el) el.textContent = newVal;
+  await saveItem(item);
 }
 
 function renderList() {
@@ -250,29 +369,62 @@ function renderDetail(item, onHand) {
     <div style="border-top:0.5px solid var(--border);margin:4px 0 16px"></div>
 
     <div class="dist-section">
-      <div class="dist-title">log outgoing</div>
-      <div class="dest-btns">
-        <button class="dest-btn ${selectedDest==='store'?'active':''}" onclick="selectDest('store')"><span class="dest-icon">🏪</span>store</button>
-        <button class="dest-btn ${selectedDest==='markets'?'active':''}" onclick="selectDest('markets')"><span class="dest-icon">⛺</span>markets</button>
-        <button class="dest-btn ${selectedDest==='website'?'active':''}" onclick="selectDest('website')"><span class="dest-icon">🌐</span>website</button>
+      <div class="dist-title" onclick="toggleOutgoing('${item.id}')" style="display:flex;align-items:center;cursor:pointer;user-select:none">
+        <span style="flex:1">log outgoing</span>
+        <span style="font-size:12px;transition:transform .2s;display:inline-block;transform:${outgoingCollapsed.has(item.id)?'rotate(0deg)':'rotate(90deg)'}">▶</span>
       </div>
-      <div class="log-row">
-        <div class="log-qty-ctrl">
-          <button class="log-qty-btn" onclick="adjustLogQty(-1)">−</button>
-          <div class="log-qty-val editable-val" id="log-qty-val" onclick="editNum(this, logQty, (v)=>{ logQty=Math.max(1,v); document.getElementById('log-qty-val').textContent=logQty; })" title="tap to edit">${logQty}</div>
-          <button class="log-qty-btn" onclick="adjustLogQty(1)">+</button>
+      <div id="outgoing-body-${item.id}" style="display:${outgoingCollapsed.has(item.id)?'none':'block'}">
+        <div class="dest-btns">
+          <button class="dest-btn ${selectedDest==='store'?'active':''}" onclick="selectDest('store')"><span class="dest-icon">🏪</span>store</button>
+          <button class="dest-btn ${selectedDest==='markets'?'active':''}" onclick="selectDest('markets')"><span class="dest-icon">⛺</span>markets</button>
+          <button class="dest-btn ${selectedDest==='website'?'active':''}" onclick="selectDest('website')"><span class="dest-icon">🌐</span>website</button>
         </div>
-        <input class="log-note" id="log-note-${item.id}" placeholder="note (optional)"/>
+        <div class="log-row">
+          <div class="log-qty-ctrl">
+            <button class="log-qty-btn" onclick="adjustLogQty(-1)">−</button>
+            <div class="log-qty-val editable-val" id="log-qty-val" onclick="editNum(this, logQty, (v)=>{ logQty=Math.max(1,v); document.getElementById('log-qty-val').textContent=logQty; })" title="tap to edit">${logQty}</div>
+            <button class="log-qty-btn" onclick="adjustLogQty(1)">+</button>
+          </div>
+          <input class="log-note" id="log-note-${item.id}" placeholder="note (optional)"/>
+        </div>
+        <button class="log-submit" onclick="logDistribution('${item.id}')">log ${logQty} to ${selectedDest}</button>
       </div>
-      <button class="log-submit" onclick="logDistribution('${item.id}')">log ${logQty} to ${selectedDest}</button>
     </div>
 
-    ${histRows ? `<div class="dist-history"><div class="dist-hist-title">history</div>${histRows}</div>` : ''}`;
+    ${histRows ? `
+    <div class="dist-history">
+      <div class="dist-hist-title" onclick="toggleHistory('${item.id}')" style="display:flex;align-items:center;cursor:pointer;user-select:none">
+        <span style="flex:1">history</span>
+        <span style="font-size:12px;transition:transform .2s;display:inline-block;transform:${historyCollapsed.has(item.id)?'rotate(0deg)':'rotate(90deg)'}">▶</span>
+      </div>
+      <div id="hist-body-${item.id}" style="display:${historyCollapsed.has(item.id)?'none':'block'}">${histRows}</div>
+    </div>` : ''}`;
 }
 
 function toggleCard(id) {
   expandedId = expandedId === id ? null : id;
   renderList();
+}
+
+function toggleHistory(id) {
+  if (historyCollapsed.has(id)) historyCollapsed.delete(id);
+  else historyCollapsed.add(id);
+  const body = document.getElementById('hist-body-' + id);
+  const chevron = body ? body.previousElementSibling.querySelector('span:last-child') : null;
+  if (body) body.style.display = historyCollapsed.has(id) ? 'none' : 'block';
+  if (chevron) chevron.style.transform = historyCollapsed.has(id) ? 'rotate(0deg)' : 'rotate(90deg)';
+}
+
+function toggleOutgoing(id) {
+  if (outgoingCollapsed.has(id)) {
+    outgoingCollapsed.delete(id);
+  } else {
+    outgoingCollapsed.add(id);
+  }
+  const body = document.getElementById('outgoing-body-' + id);
+  const chevron = body ? body.previousElementSibling.querySelector('span:last-child') : null;
+  if (body) body.style.display = outgoingCollapsed.has(id) ? 'none' : 'block';
+  if (chevron) chevron.style.transform = outgoingCollapsed.has(id) ? 'rotate(0deg)' : 'rotate(90deg)';
 }
 
 function selectDest(dest) {

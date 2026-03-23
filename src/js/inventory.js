@@ -60,6 +60,33 @@ function addToInventory(productName) {
   setView('inventory');
 }
 
+async function quickAddToInventory(productName) {
+  const existing = inventory.find(i => i.name === productName);
+  if (existing) {
+    existing.built = (existing.built||0) + 1;
+    invSyncStorage(existing);
+  } else {
+    const locs = getStorageLocations();
+    const storage = {};
+    locs.forEach((loc, i) => { storage[loc] = i === locs.length - 1 ? 1 : 0; });
+    inventory.push({ id:'inv_'+Date.now(), name:productName, category:products[productName]?.category||'', built:1, location:'', storage, distributions:[], source:'tracker' });
+  }
+  await persist();
+  renderStats();
+  // Flash brief feedback on the button
+  document.querySelectorAll('.product-card').forEach(card => {
+    const titleEl = card.querySelector('.product-title');
+    if (titleEl && titleEl.textContent === productName) {
+      const btn = [...card.querySelectorAll('.rename-btn')].find(b => b.textContent === '+ inv');
+      if (btn) {
+        btn.textContent = '✓ added!';
+        btn.style.color = 'var(--green)';
+        setTimeout(() => { btn.textContent = '+ inv'; btn.style.color = 'var(--green-dark)'; }, 1400);
+      }
+    }
+  });
+}
+
 function renderInventoryView() {
   const container = document.getElementById('view-inventory');
   if (!container) return;

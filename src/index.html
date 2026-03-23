@@ -50,7 +50,7 @@
       <div class="field"><label>source</label>
         <select id="ap-source">
           <option value="">— select source —</option>
-          <option value="patreon">Patreon</option>
+          <option value="n3d-membership">N3D Membership</option>
           <option value="thangs">Thangs</option>
           <option value="makersworld">MakersWorld</option>
           <option value="other">Other</option>
@@ -155,6 +155,13 @@
           <span class="ssec-chevron">▶</span>Inventory
         </div>
         <div class="settings-section-content">
+          <div class="field" style="margin-bottom:14px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <input type="checkbox" id="s-inv-popup" style="width:16px;height:16px;cursor:pointer"/>
+              <label for="s-inv-popup" style="margin-bottom:0;cursor:pointer;font-size:14px">Show <strong>+ inv</strong> button on product cards</label>
+            </div>
+            <div style="font-size:11px;color:var(--text2);margin-top:4px;margin-left:26px">When off, the button is hidden from all product cards</div>
+          </div>
           <div class="field">
             <label>Storage locations</label>
             <div id="storage-loc-manager"></div>
@@ -233,6 +240,29 @@
   </div>
 </div>
 
+<!-- quick-add to inventory modal -->
+<div id="quick-add-modal" style="display:none">
+  <div class="modal-bg" onclick="if(event.target===this)closeQuickAddModal()">
+    <div class="modal" style="width:360px">
+      <h3>add to inventory</h3>
+      <p id="quick-add-product-name" style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></p>
+      <div class="field" style="margin-bottom:20px">
+        <label>quantity built</label>
+        <div style="display:flex;align-items:center;gap:0;margin-top:8px">
+          <button onclick="adjustQuickAddQty(-1)" style="width:64px;height:64px;border:0.5px solid var(--border2);background:var(--bg2);cursor:pointer;font-size:30px;font-weight:300;color:var(--text);display:flex;align-items:center;justify-content:center;border-radius:var(--radius) 0 0 var(--radius);font-family:inherit">−</button>
+          <div id="quick-add-qty-val" style="flex:1;height:64px;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:700;border-top:0.5px solid var(--border2);border-bottom:0.5px solid var(--border2);color:var(--text);background:var(--bg)">1</div>
+          <button onclick="adjustQuickAddQty(1)" style="width:64px;height:64px;border:0.5px solid var(--border2);background:var(--bg2);cursor:pointer;font-size:30px;font-weight:300;color:var(--text);display:flex;align-items:center;justify-content:center;border-radius:0 var(--radius) var(--radius) 0;font-family:inherit">+</button>
+        </div>
+      </div>
+      <div id="quick-add-locations"></div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeQuickAddModal()">cancel</button>
+        <button class="btn btn-success" onclick="confirmQuickAdd()">add to inventory</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- completion modal -->
 <div id="completion-modal" style="display:none">
   <div class="modal-bg" onclick="if(event.target===this)closeCompletionModal()">
@@ -296,7 +326,7 @@
       <div class="field"><label>source</label>
         <select id="rename-source">
           <option value="">— select source —</option>
-          <option value="patreon">Patreon</option>
+          <option value="n3d-membership">N3D Membership</option>
           <option value="thangs">Thangs</option>
           <option value="makersworld">MakersWorld</option>
           <option value="other">Other</option>
@@ -399,7 +429,10 @@
             <option value="split">one part per colour</option>
           </select>
         </div>
-        <div id="n3d-sel-bar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--green-bg);border:0.5px solid var(--green-border);border-radius:var(--radius-lg);margin-bottom:12px">
+        <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-shrink:0">
+          <button class="btn" onclick="n3dSelectAll()" style="font-size:12px;white-space:nowrap">☑ select all on page</button>
+        </div>
+        <div id="n3d-sel-bar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--green-bg);border:0.5px solid var(--green-border);border-radius:var(--radius-lg);margin-bottom:12px;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.08)">
           <span id="n3d-sel-label" style="font-size:13px;color:var(--green-dark);flex:1"></span>
           <label style="font-size:12px;color:var(--green-dark);white-space:nowrap">category</label>
           <select id="n3d-import-cat" style="font-size:13px;background:var(--bg);border:0.5px solid var(--green-border);border-radius:var(--radius);padding:5px 8px;color:var(--text);font-family:inherit;cursor:pointer;min-width:140px"><option value="">— no category —</option></select>
