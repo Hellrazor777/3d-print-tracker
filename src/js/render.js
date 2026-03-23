@@ -22,9 +22,14 @@ function renderStats() {
   const items=getItems().filter(i=>!products[i]?.archived), readyN=items.filter(i=>isReady(i)).length;
   const tp=parts.reduce((a,p)=>a+p.printed,0), tn=parts.reduce((a,p)=>a+p.qty,0);
   const archivedN = Object.values(products).filter(p=>p.archived).length;
+  const onHand=inventory.reduce((a,item)=>{
+    const totalOut=(item.distributions||[]).reduce((s,d)=>s+(d.qty||0),0);
+    return a+Math.max(0,(item.built||0)-totalOut);
+  },0);
   document.getElementById('stats').innerHTML=`
     <div class="stat"><div class="stat-label">Active Products</div><div class="stat-val">${items.length}</div></div>
     <div class="stat"><div class="stat-label">Parts Tracked</div><div class="stat-val">${parts.length}</div></div>
     <div class="stat"><div class="stat-label">Pieces Printed</div><div class="stat-val">${tp}/${tn}</div></div>
-    <div class="stat"><div class="stat-label">Ready to Build</div><div class="stat-val" style="color:var(--green)">${readyN}</div></div>`;
+    <div class="stat"><div class="stat-label">Ready to Build</div><div class="stat-val" style="color:var(--green)">${readyN}</div></div>
+    <div class="stat"><div class="stat-label">On Hand</div><div class="stat-val" style="color:var(--green)">${onHand}</div></div>`;
 }
