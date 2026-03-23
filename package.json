@@ -1,0 +1,39 @@
+{
+  "name": "3d-print-tracker",
+  "version": "2.1.0",
+  "description": "Track your 3D printing jobs, parts and projects",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "lint": "eslint main.js preload.js src/main/**/*.js src/js/**/*.js",
+    "lint:fix": "eslint --fix main.js preload.js src/main/**/*.js src/js/**/*.js",
+    "build": "npm run lint && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.yourname.3dprinttracker",
+    "productName": "3D Print Tracker",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build-resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "build-resources/**/*"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.0.0",
+    "eslint": "^8.57.0"
+  }
+}
