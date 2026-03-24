@@ -79,10 +79,13 @@ cd 3d-print-tracker
 # Install dependencies
 npm install
 
-# Run without installing (dev mode)
-npm start
+# Dev mode — Vite dev server + Electron with hot reload
+npm run dev
 
-# Build the Windows installer (run terminal as Administrator)
+# Dev mode — browser only (no Electron)
+npm run dev:web
+
+# Build the Windows installer
 npm run build
 ```
 
@@ -106,6 +109,8 @@ The installer will be at `dist/3D Print Tracker Setup 3.0.0.exe`.
 3. Type that URL into your phone's browser (e.g. `http://192.168.1.x:3000`)
 4. Bookmark it to your home screen for quick access
 
+**Accessing from outside your home network:** Install [Tailscale](https://tailscale.com) (free) on both your PC and phone. Once connected, your phone can reach the companion app from anywhere — no code changes or port forwarding needed.
+
 ---
 
 ## Data Location
@@ -124,8 +129,8 @@ Back up these files to preserve your data across reinstalls.
 ## Tech Stack
 
 - [Electron](https://www.electronjs.org/) v29 — desktop app framework
+- [React](https://react.dev/) 18 + [Vite](https://vitejs.dev/) v5 — UI framework and build tool
 - [electron-builder](https://www.electron.build/) — Windows installer packaging
-- Vanilla HTML / CSS / JavaScript — no frontend framework
 - Node.js `http` / `https` — local mobile server and N3D API proxy
 
 ---
@@ -133,6 +138,13 @@ Back up these files to preserve your data across reinstalls.
 ## Changelog
 
 ### v3.0.0
+- **React/Vite migration** — renderer rewritten in React 18 + Vite v5; modular component/view/modal structure
+- **Delete part** — ✕ button removes immediately with no confirmation dialog
+- **Duplicate product warning** — adding a product with a name already in the tracker shows a confirmation overlay
+- **Mobile: built count popup** — tap the built count row to open a delta sheet; delta resets to 0 each open, total accumulates
+- **Mobile: stocktake storage fix** — location counts now correctly read from `item.storage` matching the desktop format
+- **Mobile: log outgoing qty fix** — +/- buttons now update all visible qty displays correctly
+- **Mobile: remote access** — works outside home network via Tailscale (no code changes needed)
 - **Product workflow** — split active products into three fixed sections: Printing, Commenced, Ready to Build
 - **Main screen search** — filter products by name, category or part name from the filter bar
 - **+ inv button** — quick-add to inventory from any product card with qty picker and storage split popup; toggle visibility in Settings
