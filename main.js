@@ -1,5 +1,9 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net } = require('electron');
 const path = require('path');
+
+// Set NODE_ENV=development when running via "npm run dev:electron"
+const isDev = process.env.NODE_ENV === 'development';
+const DEV_URL = 'http://localhost:5173';
 
 const DATA_PATH = path.join(app.getPath('userData'), 'data.json');
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
@@ -26,11 +30,28 @@ function createWindow() {
     icon: path.join(__dirname, 'build-resources', 'icon.ico'),
     title: '3D Print Tracker',
   });
-  mainWin.loadFile(path.join(__dirname, 'src', 'index.html'));
+  if (isDev) {
+    // Load from Vite dev server (hot reload). Retries once if Vite isn't ready yet.
+    mainWin.loadURL(DEV_URL).catch(() => {
+      setTimeout(() => mainWin.loadURL(DEV_URL).catch(() => {}), 2000);
+    });
+    mainWin.webContents.openDevTools();
+  } else {
+    mainWin.loadFile(path.join(__dirname, 'dist-web', 'index.html'));
+  }
   mainWin.setMenuBarVisibility(false);
 }
 
 app.whenReady().then(() => {
+  // Register localfile:// protocol so the renderer (even when served from
+  // localhost in dev mode) can safely load images stored on the local filesystem.
+  protocol.handle('localfile', (request) => {
+    // Strip the scheme: localfile:///S:/foo/bar.webp → S:/foo/bar.webp
+    const filePath = decodeURIComponent(request.url.slice('localfile:///'.length));
+    // On Windows, paths arrive as S:/foo — keep as-is; on Mac/Linux they're /foo
+    return net.fetch('file:///' + filePath);
+  });
+
   createWindow();
 
   // Register IPC handlers (getPort returns actual bound port after server starts)

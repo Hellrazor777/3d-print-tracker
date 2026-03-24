@@ -136,6 +136,26 @@
 
 <button class="fab" onclick="openAddSheet()" title="add product">+</button>
 
+<div class="sheet-bg" id="built-popup" onclick="if(event.target===this)closeBuiltPopup()">
+  <div class="sheet">
+    <h3>update built count</h3>
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:14px;color:var(--text2);margin-bottom:6px">new total</div>
+      <div style="font-size:56px;font-weight:700;line-height:1" id="built-popup-total">0</div>
+    </div>
+    <div style="font-size:14px;color:var(--text2);text-align:center;margin-bottom:14px">adjust by</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:32px">
+      <button class="count-btn" onclick="adjustBuiltDelta(-1)" style="border-radius:var(--radius) 0 0 var(--radius)">−</button>
+      <div class="count-val" id="built-delta-val" style="min-width:100px;font-size:36px;font-weight:700">0</div>
+      <button class="count-btn" onclick="adjustBuiltDelta(1)" style="border-radius:0 var(--radius) var(--radius) 0">+</button>
+    </div>
+    <div class="sheet-footer">
+      <button onclick="closeBuiltPopup()">cancel</button>
+      <button class="primary" onclick="confirmBuiltDelta()">apply</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-bg" id="add-sheet" onclick="if(event.target===this)closeAddSheet()">
   <div class="sheet">
     <h3>add to inventory</h3>
@@ -159,6 +179,8 @@ let outgoingCollapsed = new Set();
 let historyCollapsed = new Set();
 let appMode = 'inventory'; // 'inventory' | 'stocktake'
 let stocktakeLocation = null;
+let builtPopupItemId = null;
+let builtDelta = 0;
 
 async function reload() {
   try {
@@ -337,32 +359,30 @@ function renderDetail(item, onHand) {
       <div class="summary-pill"><div class="val">${item.built||0}</div><div class="lbl">built</div></div>
       <div class="summary-pill"><div class="val">${totalOut}</div><div class="lbl">out</div></div>
       <div class="summary-pill"><div class="val" style="color:var(--green)">${onHand}</div><div class="lbl">on hand</div></div>
-      <div class="summary-pill"><div class="val">${item.box||0}</div><div class="lbl">box</div></div>
-      <div class="summary-pill"><div class="val">${item.shelf||0}</div><div class="lbl">shelf</div></div>
+      ${Object.entries(item.storage||{}).map(([k,v])=>`<div class="summary-pill"><div class="val">${v||0}</div><div class="lbl">${k.toLowerCase()}</div></div>`).join('')}
     </div>
 
-    <div class="count-row">
+    <div class="count-row" onclick="openBuiltPopup('${item.id}')" style="cursor:pointer">
       <div>
         <div style="font-size:14px;font-weight:500">built count</div>
-        <div class="count-label">total assembled</div>
+        <div class="count-label">tap to update</div>
       </div>
-      <div class="count-ctrl">
-        <button class="count-btn" onclick="adjustBuilt('${item.id}',-1)">−</button>
-        <div class="count-val editable-val" onclick="editNum(this, ${item.built||0}, async (v)=>{ item.built=Math.max(0,v); syncBoxShelf(item); await saveItem(item); renderList(); })" title="tap to edit">${item.built||0}</div>
-        <button class="count-btn" onclick="adjustBuilt('${item.id}',1)">+</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-size:36px;font-weight:700">${item.built||0}</div>
+        <div style="font-size:20px;color:var(--text2)">›</div>
       </div>
     </div>
 
     <div style="font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">location split</div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">box + shelf must equal ${calcOnHand(item)} on hand</div>
-    ${['box','shelf'].map(loc => `
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">total must equal ${calcOnHand(item)} on hand</div>
+    ${Object.keys(item.storage||{}).map(loc => `
     <div class="count-row" style="margin-bottom:12px">
       <div>
         <div style="font-size:16px;font-weight:500;text-transform:capitalize">${loc}</div>
       </div>
       <div class="count-ctrl">
         <button class="count-btn" onclick="adjustLocation('${item.id}','${loc}',-1)">−</button>
-        <div class="count-val editable-val" id="mob-${loc}-${item.id}" onclick="editNum(this, ${item[loc]||0}, async (v)=>{ const onHand=calcOnHand(item); const other=loc==='box'?'shelf':'box'; item[loc]=Math.max(0,Math.min(onHand,v)); item[other]=Math.max(0,onHand-item[loc]); const otherEl=document.getElementById('mob-'+other+'-'+'${item.id}'); if(otherEl)otherEl.textContent=item[other]; await saveItem(item); })" title="tap to edit">${item[loc]||0}</div>
+        <div class="count-val editable-val" id="mob-${loc}-${item.id}" onclick="editNum(this, ${(item.storage||{})[loc]||0}, async (v)=>{ if(!item.storage)item.storage={}; const onHand=calcOnHand(item); const locs=Object.keys(item.storage); item.storage['${loc}']=Math.max(0,Math.min(onHand,v)); const otherLocs=locs.filter(l=>l!=='${loc}'); if(otherLocs.length===1){item.storage[otherLocs[0]]=Math.max(0,onHand-item.storage['${loc}']); const otherEl=document.getElementById('mob-'+otherLocs[0]+'-'+'${item.id}'); if(otherEl)otherEl.textContent=item.storage[otherLocs[0]];} await saveItem(item); })" title="tap to edit">${(item.storage||{})[loc]||0}</div>
         <button class="count-btn" onclick="adjustLocation('${item.id}','${loc}',1)">+</button>
       </div>
     </div>`).join('')}
@@ -382,7 +402,7 @@ function renderDetail(item, onHand) {
         <div class="log-row">
           <div class="log-qty-ctrl">
             <button class="log-qty-btn" onclick="adjustLogQty(-1)">−</button>
-            <div class="log-qty-val editable-val" id="log-qty-val" onclick="editNum(this, logQty, (v)=>{ logQty=Math.max(1,v); document.getElementById('log-qty-val').textContent=logQty; })" title="tap to edit">${logQty}</div>
+            <div class="log-qty-val editable-val" onclick="editNum(this, logQty, (v)=>{ logQty=Math.max(1,v); document.querySelectorAll('.log-qty-val').forEach(el=>el.textContent=logQty); document.querySelectorAll('.log-submit').forEach(b=>b.textContent='log '+logQty+' to '+selectedDest); })" title="tap to edit">${logQty}</div>
             <button class="log-qty-btn" onclick="adjustLogQty(1)">+</button>
           </div>
           <input class="log-note" id="log-note-${item.id}" placeholder="note (optional)"/>
@@ -434,17 +454,27 @@ function selectDest(dest) {
 
 function adjustLogQty(delta) {
   logQty = Math.max(1, logQty + delta);
-  const el = document.getElementById('log-qty-val');
-  if (el) el.textContent = logQty;
+  document.querySelectorAll('.log-qty-val').forEach(el => el.textContent = logQty);
   document.querySelectorAll('.log-submit').forEach(b => {
     b.textContent = 'log ' + logQty + ' to ' + selectedDest;
   });
 }
 
-function syncBoxShelf(item) {
+function syncStorage(item) {
+  if (!item.storage) item.storage = {};
   const onHand = calcOnHand(item);
-  const total = (item.box||0)+(item.shelf||0);
-  if (total !== onHand) { item.shelf = Math.max(0, onHand-(item.box||0)); item.box = Math.min(item.box||0, onHand); }
+  const locs = Object.keys(item.storage);
+  if (!locs.length) return;
+  const total = locs.reduce((a, l) => a + (item.storage[l]||0), 0);
+  if (total !== onHand) {
+    if (locs.length === 1) { item.storage[locs[0]] = onHand; return; }
+    let remaining = onHand;
+    locs.slice(0, -1).forEach(l => {
+      item.storage[l] = Math.min(item.storage[l]||0, remaining);
+      remaining -= item.storage[l];
+    });
+    item.storage[locs[locs.length-1]] = Math.max(0, remaining);
+  }
 }
 
 function editNum(el, currentVal, onSave) {
@@ -465,24 +495,58 @@ function editNum(el, currentVal, onSave) {
   input.addEventListener('keydown', e => { if(e.key==='Enter'||e.key==='Done') finish(); });
 }
 
-async function adjustBuilt(id, delta) {
+function openBuiltPopup(id) {
   const item = inventory.find(i => i.id === id);
   if (!item) return;
-  item.built = Math.max(0, (item.built||0) + delta);
+  builtPopupItemId = id;
+  builtDelta = 0;
+  document.getElementById('built-popup-total').textContent = item.built || 0;
+  document.getElementById('built-delta-val').textContent = 0;
+  document.getElementById('built-popup').classList.add('open');
+}
+
+function closeBuiltPopup() {
+  document.getElementById('built-popup').classList.remove('open');
+  builtPopupItemId = null;
+  builtDelta = 0;
+}
+
+function adjustBuiltDelta(delta) {
+  const item = inventory.find(i => i.id === builtPopupItemId);
+  if (!item) return;
+  const newTotal = (item.built || 0) + builtDelta + delta;
+  if (newTotal < 0) return;
+  builtDelta += delta;
+  document.getElementById('built-delta-val').textContent = builtDelta > 0 ? '+' + builtDelta : builtDelta;
+  document.getElementById('built-popup-total').textContent = (item.built || 0) + builtDelta;
+}
+
+async function confirmBuiltDelta() {
+  const item = inventory.find(i => i.id === builtPopupItemId);
+  if (!item) return;
+  item.built = Math.max(0, (item.built || 0) + builtDelta);
+  syncStorage(item);
   await saveItem(item);
+  closeBuiltPopup();
   renderList();
 }
 
 async function adjustLocation(id, loc, delta) {
   const item = inventory.find(i => i.id === id); if (!item) return;
+  if (!item.storage) item.storage = {};
   const onHand = calcOnHand(item);
-  const other = loc === 'box' ? 'shelf' : 'box';
-  item[loc] = Math.max(0, Math.min(onHand, (item[loc]||0) + delta));
-  item[other] = Math.max(0, onHand - item[loc]);
+  const locs = Object.keys(item.storage);
+  const newVal = Math.max(0, Math.min(onHand, (item.storage[loc]||0) + delta));
+  const diff = newVal - (item.storage[loc]||0);
+  item.storage[loc] = newVal;
+  const otherLocs = locs.filter(l => l !== loc);
+  if (otherLocs.length === 1) {
+    item.storage[otherLocs[0]] = Math.max(0, (item.storage[otherLocs[0]]||0) - diff);
+    const otherEl = document.getElementById('mob-'+otherLocs[0]+'-'+id);
+    if (otherEl) otherEl.textContent = item.storage[otherLocs[0]];
+  }
   const locEl = document.getElementById('mob-'+loc+'-'+id);
-  const otherEl = document.getElementById('mob-'+other+'-'+id);
-  if (locEl) locEl.textContent = item[loc];
-  if (otherEl) otherEl.textContent = item[other];
+  if (locEl) locEl.textContent = newVal;
   await saveItem(item);
 }
 
@@ -527,8 +591,7 @@ async function saveNewItem() {
     category: document.getElementById('add-cat').value.trim(),
     built: builtQty,
     location: document.getElementById('add-location').value.trim(),
-    box: 0,
-    shelf: builtQty,
+    storage: { Box: 0, Shelf: builtQty },
     distributions: [],
     source: 'manual'
   };

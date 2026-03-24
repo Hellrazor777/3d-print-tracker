@@ -1,7 +1,14 @@
 {
   "root": true,
   "env": {
-    "es2020": true
+    "es2022": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
   },
   "rules": {
     "eqeqeq": ["warn", "always", { "null": "ignore" }],
@@ -22,6 +29,9 @@
   "overrides": [
     {
       "files": ["main.js", "preload.js", "src/main/**/*.js"],
+      "parserOptions": {
+        "sourceType": "commonjs"
+      },
       "env": {
         "node": true
       },
@@ -31,9 +41,15 @@
       }
     },
     {
-      "files": ["src/js/state.js"],
+      "files": ["src/**/*.jsx", "src/main.jsx"],
+      "env": {
+        "browser": true
+      },
       "rules": {
-        "prefer-const": "off"
+        "no-undef": "warn",
+        "no-unused-vars": ["warn", { "vars": "all", "args": "none", "ignoreRestSiblings": true, "varsIgnorePattern": "^[A-Z]" }],
+        "no-console": "off",
+        "no-empty": ["warn", { "allowEmptyCatch": true }]
       }
     },
     {
@@ -46,116 +62,6 @@
         "no-undef": "warn",
         "no-unused-vars": "off",
         "no-empty": ["warn", { "allowEmptyCatch": true }]
-      },
-      "globals": {
-        "electronAPI": "readonly",
-        "parts": "writable",
-        "products": "writable",
-        "inventory": "writable",
-        "nextId": "writable",
-        "editId": "writable",
-        "renameTarget": "writable",
-        "activeFilter": "writable",
-        "dragId": "writable",
-        "currentView": "writable",
-        "openProducts": "writable",
-        "pendingRows": "writable",
-        "conflictQueue": "writable",
-        "conflictDecisions": "writable",
-        "selectedConflictOpt": "writable",
-        "invExpanded": "writable",
-        "invSectionCollapsed": "writable",
-        "invLogQty": "writable",
-        "invLogDest": "writable",
-        "catExpanded": "writable",
-        "sliceFilter": "writable",
-        "appSettings": "writable",
-        "completionProductName": "writable",
-        "completionQty": "writable",
-        "n3dSelected": "writable",
-        "n3dPage": "writable",
-        "n3dDesignCache": "writable",
-        "n3dDebounceTimer": "writable",
-        "isElectron": "readonly",
-        "esc": "readonly",
-        "persist": "readonly",
-        "loadData": "readonly",
-        "saveData": "readonly",
-        "render": "readonly",
-        "setView": "readonly",
-        "setFilter": "readonly",
-        "updateDatalist": "readonly",
-        "renderProductView": "readonly",
-        "renderInventoryView": "readonly",
-        "renderColourView": "readonly",
-        "renderArchiveView": "readonly",
-        "renderStats": "readonly",
-        "getItems": "readonly",
-        "getCategories": "readonly",
-        "isReady": "readonly",
-        "productHas3mf": "readonly",
-        "openStatusModal": "readonly",
-        "openSubStatusModal": "readonly",
-        "openRename": "readonly",
-        "closeRename": "readonly",
-        "archiveProduct": "readonly",
-        "unarchiveProduct": "readonly",
-        "restartProduct": "readonly",
-        "openProductFolder": "readonly",
-        "openProductInSlicer": "readonly",
-        "uploadProduct3mf": "readonly",
-        "uploadProductImage": "readonly",
-        "autoCreateProductFolder": "readonly",
-        "ensureProductFolder": "readonly",
-        "addSubPart": "readonly",
-        "delSubPart": "readonly",
-        "adjustSubPrinted": "readonly",
-        "reprint": "readonly",
-        "openEdit": "readonly",
-        "del": "readonly",
-        "toggleProduct": "readonly",
-        "saveCatState": "readonly",
-        "applyTheme": "readonly",
-        "setTheme": "readonly",
-        "openSettings": "readonly",
-        "closeSettings": "readonly",
-        "saveSettingsModal": "readonly",
-        "pick3mfFolder": "readonly",
-        "addCategory": "readonly",
-        "getCategoryOrder": "readonly",
-        "renderCategoryManager": "readonly",
-        "renderProductView": "readonly",
-        "getStorageLocations": "readonly",
-        "renderStorageLocationManager": "readonly",
-        "addStorageLocation": "readonly",
-        "getOutgoingDests": "readonly",
-        "renderOutgoingDestManager": "readonly",
-        "addOutgoingDest": "readonly",
-        "renderInventoryView": "readonly",
-        "openRenameCat": "readonly",
-        "closeRenameCat": "readonly",
-        "confirmRenameCat": "readonly",
-        "toggleSettingsSection": "readonly",
-        "populateCategorySelect": "readonly",
-        "initSettingsSections": "readonly",
-        "addColourRow": "readonly",
-        "resetColourRows": "readonly",
-        "getColourRows": "readonly",
-        "syncColourPick": "readonly",
-        "n3dLoadPage": "readonly",
-        "n3dDebounce": "readonly",
-        "n3dImportSelected": "readonly",
-        "n3dUpdateBar": "readonly",
-        "checkBambuVersion": "readonly",
-        "quickAddToInventory": "readonly",
-        "n3dSelectAll": "readonly",
-        "openQuickAddModal": "readonly",
-        "renderQuickAddLocations": "readonly",
-        "adjustQuickAddQty": "readonly",
-        "closeQuickAddModal": "readonly",
-        "confirmQuickAdd": "readonly",
-        "invSyncStorage": "readonly",
-        "quickAddLocations": "writable"
       }
     }
   ]
