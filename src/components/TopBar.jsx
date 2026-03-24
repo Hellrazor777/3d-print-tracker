@@ -13,7 +13,7 @@ export default function TopBar() {
         <button id="vb-inventory" className={`view-btn${currentView === 'inventory' ? ' active' : ''}`} onClick={() => setView('inventory')}>Inventory</button>
       </div>
       <button className="btn" onClick={() => openModal('settings')} title="settings">⚙ Settings</button>
-      <button className="btn" onClick={() => openModal('n3d')} style={{ borderColor: '#7f77dd', color: '#3c3489' }}>N3D browse</button>
+      <button className="btn btn-n3d" onClick={() => openModal('n3d')}>N3D Browse</button>
       <button className="btn" onClick={() => openModal('import', { mode: 'import' })}>↑ Import CSV</button>
       <button className="btn" onClick={exportData}>↓ Export CSV</button>
       <button className="btn" onClick={() => openModal('add-product')}>+ Add Product</button>

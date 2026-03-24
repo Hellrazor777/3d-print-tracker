@@ -93,3 +93,80 @@
 - v2.1.0 — UI polish, theme toggle, category manager, pre-sliced 3MF flag, manage modal, custom icon
 - Codebase refactor — split monolithic index.html + main.js into React/Vite modular structure
 - v3.0.0 — Printing/Commenced/Ready workflow, main search, +inv popup, N3D select-all, stocktake mode, mobile collapsible sections, port auto-retry, React migration, production build pipeline
+
+## Recent fixes (on main, not yet committed)
+- **3MF badge stale ref fix**: `ProductCard` now computes `has3mf` directly from `products` state prop instead of `productHas3mf()` (which read from `productsRef` — a `useEffect`-synced ref that lagged one render behind after upload)
+- **3MF upload toast**: `handle3mfUpload` wrapper in `ProductView` shows a fixed bottom toast for 3s after upload (`uploadProduct3mf` returns file count)
+- **ColourView search**: search bar filters by colour name, product name, or part name
+- **ColourView clickable products**: product name subtitle is a clickable link — calls `setView('products')` + `toggleProduct(item)` to navigate and expand
+
+## Branch: feature/web-app (NOT YET CREATED — start here next session)
+
+### Goal
+Public web app with cloud sync — any user visits a URL, signs up, and their data follows them across PC, phone, and tablet. Electron desktop app stays unchanged on `main`.
+
+### To create the branch
+Run on your Windows machine: `git checkout -b feature/web-app`
+
+### Architecture decisions
+- **Backend**: Supabase (free tier — supabase.com). Postgres + auth + real-time. No self-hosting needed.
+- **Data model**: One row per user in `user_data` table. Columns: `user_id`, `data` (jsonb — mirrors current `data.json`), `settings` (jsonb — mirrors `settings.json`), `updated_at`
+- **Auth**: Supabase Auth — email/password + magic link option
+- **Hosting**: Netlify (free) — auto-deploys from GitHub on push
+- **Images**: Hidden on web for now (`isElectron` gate) — Supabase Storage can be added later
+- **N3D Melbourne**: Hidden on web (needs CORS proxy, not worth it for public users)
+- **Electron app**: Zero changes — still reads/writes local files, no login required
+
+### Supabase SQL to run (in Supabase SQL editor when project is created)
+```sql
+create table public.user_data (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null unique,
+  data jsonb not null default '{}',
+  settings jsonb not null default '{}',
+  updated_at timestamptz not null default now()
+);
+
+alter table public.user_data enable row level security;
+
+create policy "Users can view own data" on public.user_data
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own data" on public.user_data
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own data" on public.user_data
+  for update using (auth.uid() = user_id);
+```
+
+### Files to create (new)
+- `src/lib/supabase.js` — Supabase client (reads from `import.meta.env.VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`)
+- `src/components/AuthModal.jsx` — sign in / sign up screen shown on web when not logged in
+- `netlify.toml` — build command + publish dir + SPA redirect rule
+- `.env.example` — template (safe to commit): `VITE_SUPABASE_URL=` and `VITE_SUPABASE_ANON_KEY=`
+
+### Files to modify
+- `src/context/AppContext.jsx` — replace localStorage fallback (lines 18–33) with Supabase reads/writes; add `user` + `authChecked` state; `init()` waits for auth on web; `supabase.auth.onAuthStateChange` listener
+- `src/App.jsx` — add auth gate: if web + `!user` → show `<AuthModal />` instead of main app
+- `package.json` — add `@supabase/supabase-js` to dependencies; add `"deploy": "vite build"` script
+
+### Auth flow (web only)
+1. App loads → `supabase.auth.getSession()` → sets `user` + `authChecked`
+2. If no session → `<AuthModal />` (sign in / sign up)
+3. On login → `onAuthStateChange` fires → `user` set → `init()` runs → data loads from Supabase
+4. On logout → `user` cleared → `<AuthModal />` shown again
+5. Electron: skips all of this, `user` set to a fake local sentinel, `init()` runs immediately
+
+### AppContext data flow (web branch)
+- `loadData()` → `supabase.from('user_data').select('data').eq('user_id', user.id).single()`
+- `saveData(d)` → `supabase.from('user_data').upsert({ user_id, data: d }, { onConflict: 'user_id' })`
+- `loadSettings()` → same table, `select('settings')`
+- `saveSettings(s)` → same table, upsert `settings` column
+
+### Netlify setup (user does this after code is ready)
+1. Push `feature/web-app` branch to GitHub
+2. Go to app.netlify.com → New site → Import from GitHub → select repo
+3. Branch: `feature/web-app` (or `main` once merged)
+4. Build command: `npm run build:web`
+5. Publish directory: `dist-web`
+6. Add env vars: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (from Supabase project Settings → API)

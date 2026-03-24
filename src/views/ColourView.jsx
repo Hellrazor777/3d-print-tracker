@@ -1,17 +1,30 @@
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 
 function esc(s) { return String(s || ''); }
 
 export default function ColourView() {
-  const { parts, colourExpanded, toggleColour } = useApp();
+  const { parts, colourExpanded, toggleColour, setView, openProducts, toggleProduct } = useApp();
+  const [search, setSearch] = useState('');
+
   const queuedParts = parts.filter(p => p.status === 'queue');
 
   if (!queuedParts.length) {
     return <p style={{ color: 'var(--text2)', fontSize: 13, padding: '1rem 0' }}>no parts in queue — add some parts and set their status to queue.</p>;
   }
 
+  const q = search.trim().toLowerCase();
+  const filteredParts = q
+    ? queuedParts.filter(p =>
+        (p.item || '').toLowerCase().includes(q) ||
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.colours?.some(c => (c.name || '').toLowerCase().includes(q) || (c.hex || '').toLowerCase().includes(q))) ||
+        (p.colourName || '').toLowerCase().includes(q)
+      )
+    : queuedParts;
+
   const colourMap = {};
-  queuedParts.forEach(p => {
+  filteredParts.forEach(p => {
     const colours = p.colours?.length ? p.colours : (p.colour ? [{ hex: p.colour, name: p.colourName || '' }] : [{ hex: '#888888', name: 'unknown' }]);
     colours.forEach(c => {
       const key = (c.name || c.hex || 'unknown').toLowerCase().trim();
@@ -21,12 +34,24 @@ export default function ColourView() {
   });
 
   const sorted = Object.values(colourMap).sort((a, b) => b.parts.length - a.parts.length);
-  const totalPcsAll = queuedParts.reduce((a, p) => a + p.qty, 0);
+  const totalPcsAll = filteredParts.reduce((a, p) => a + p.qty, 0);
+
+  const goToProduct = (item) => {
+    if (!openProducts.has(item)) toggleProduct(item);
+    setView('products');
+  };
 
   return (
     <div>
-      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 14 }}>
-        {sorted.length} colour{sorted.length !== 1 ? 's' : ''} · {queuedParts.length} part{queuedParts.length !== 1 ? 's' : ''} · {totalPcsAll} pieces in queue
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        <span style={{ fontSize: 13, color: 'var(--text2)' }}>
+          {sorted.length} colour{sorted.length !== 1 ? 's' : ''} · {filteredParts.length} part{filteredParts.length !== 1 ? 's' : ''} · {totalPcsAll} pieces in queue
+        </span>
+        <input
+          type="search" placeholder="search colours, products…" value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ fontSize: 12, padding: '4px 10px', borderRadius: 'var(--radius)', border: '0.5px solid var(--border2)', background: 'var(--bg2)', color: 'var(--text)', width: 180, fontFamily: 'inherit', outline: 'none', marginLeft: 'auto' }}
+        />
       </div>
       {sorted.map(group => {
         const key = group.name.toLowerCase().trim();
@@ -48,7 +73,18 @@ export default function ColourView() {
                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderBottom: '0.5px solid var(--border)', fontSize: 13 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 500, color: 'var(--text)' }}>{esc(p.name)}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text2)' }}>{esc(p.item || '')}{p.variant ? ' · ' + esc(p.variant) : ''}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                        {p.item && (
+                          <span
+                            style={{ color: 'var(--accent, #5b8dee)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                            title="go to product"
+                            onClick={e => { e.stopPropagation(); goToProduct(p.item); }}
+                          >
+                            {esc(p.item)}
+                          </span>
+                        )}
+                        {p.variant ? ' · ' + esc(p.variant) : ''}
+                      </div>
                     </div>
                     <span style={{ fontSize: 12, color: 'var(--text2)' }}>{p.qty} pc{p.qty !== 1 ? 's' : ''}</span>
                     <span className="sp sp-queue" style={{ fontSize: 11 }}>queue</span>
@@ -59,6 +95,9 @@ export default function ColourView() {
           </div>
         );
       })}
+      {sorted.length === 0 && q && (
+        <p style={{ color: 'var(--text2)', fontSize: 13 }}>no results for "{q}"</p>
+      )}
     </div>
   );
 }

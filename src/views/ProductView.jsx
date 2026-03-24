@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp, localFileUrl } from '../context/AppContext';
 
 function esc(s) { return String(s || ''); }
@@ -6,18 +6,32 @@ function esc(s) { return String(s || ''); }
 export default function ProductView() {
   const {
     parts, products, appSettings, sliceFilter, setSliceFilter, productSearch, setProductSearch,
-    openProducts, catExpanded, isReady, productHas3mf, getCategoryOrder,
+    openProducts, catExpanded, isReady, getCategoryOrder,
     openModal, toggleProduct, toggleCat, archiveProduct, togglePreSliced,
     openProductFolder, openProductInSlicer, uploadProduct3mf, uploadProductImage, openExternalUrl, isElectron,
   } = useApp();
+
+  const [toast, setToast] = useState('');
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const has3mf = (i) => !!(products[i]?.threeMfFiles?.length || products[i]?.threeMfFolder);
+
+  const handle3mfUpload = async (item) => {
+    const count = await uploadProduct3mf(item);
+    if (count > 0) setToast(`${count} file${count !== 1 ? 's' : ''} added to ${item}`);
+  };
 
   const items = [...new Set(parts.map(p => p.item).filter(Boolean))].filter(i => !products[i]?.archived);
   items.forEach(it => { if (!products[it]) products[it] = { category: '' }; });
 
   // Apply 3MF filter
-  const sliceFiltered = sliceFilter === 'presliced' ? items.filter(i => productHas3mf(i) && products[i]?.preSliced)
-    : sliceFilter === 'sliced' ? items.filter(i => productHas3mf(i))
-    : sliceFilter === 'unsliced' ? items.filter(i => !productHas3mf(i))
+  const sliceFiltered = sliceFilter === 'presliced' ? items.filter(i => has3mf(i) && products[i]?.preSliced)
+    : sliceFilter === 'sliced' ? items.filter(i => has3mf(i))
+    : sliceFilter === 'unsliced' ? items.filter(i => !has3mf(i))
     : items;
 
   // Apply search
@@ -60,8 +74,8 @@ export default function ProductView() {
   });
 
   const allItems2 = [...new Set(parts.map(p => p.item).filter(Boolean))].filter(i => !products[i]?.archived);
-  const slicedCount = allItems2.filter(i => productHas3mf(i)).length;
-  const preSlicedCount = allItems2.filter(i => productHas3mf(i) && products[i]?.preSliced).length;
+  const slicedCount = allItems2.filter(i => has3mf(i)).length;
+  const preSlicedCount = allItems2.filter(i => has3mf(i) && products[i]?.preSliced).length;
 
   return (
     <div>
@@ -84,22 +98,28 @@ export default function ProductView() {
       </div>
 
       {/* Sections */}
-      {readyItems.length > 0 && <Section title="ready to build" titleColor="var(--green)" items={readyItems} defaultOpen catExpanded={catExpanded} toggleCat={toggleCat} openProducts={openProducts} toggleProduct={toggleProduct} parts={parts} products={products} isReady={isReady} productHas3mf={productHas3mf} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={uploadProduct3mf} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />}
-      {printingItems.length > 0 && <Section title="printing" titleColor="var(--amber-text)" items={printingItems} defaultOpen catExpanded={catExpanded} toggleCat={toggleCat} openProducts={openProducts} toggleProduct={toggleProduct} parts={parts} products={products} isReady={isReady} productHas3mf={productHas3mf} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={uploadProduct3mf} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />}
-      {commencedItems.length > 0 && <Section title="commenced" titleColor="var(--blue-text)" items={commencedItems} defaultOpen catExpanded={catExpanded} toggleCat={toggleCat} openProducts={openProducts} toggleProduct={toggleProduct} parts={parts} products={products} isReady={isReady} productHas3mf={productHas3mf} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={uploadProduct3mf} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />}
+      {readyItems.length > 0 && <Section title="ready to build" titleColor="var(--green)" items={readyItems} defaultOpen catExpanded={catExpanded} toggleCat={toggleCat} openProducts={openProducts} toggleProduct={toggleProduct} parts={parts} products={products} isReady={isReady} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={handle3mfUpload} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />}
+      {printingItems.length > 0 && <Section title="printing" titleColor="var(--amber-text)" items={printingItems} defaultOpen catExpanded={catExpanded} toggleCat={toggleCat} openProducts={openProducts} toggleProduct={toggleProduct} parts={parts} products={products} isReady={isReady} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={handle3mfUpload} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />}
+      {commencedItems.length > 0 && <Section title="commenced" titleColor="var(--blue-text)" items={commencedItems} defaultOpen catExpanded={catExpanded} toggleCat={toggleCat} openProducts={openProducts} toggleProduct={toggleProduct} parts={parts} products={products} isReady={isReady} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={handle3mfUpload} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />}
 
       {sortedCats.map(cat => (
-        <Section key={cat} title={cat} titleColor={null} items={cats[cat].sort((a, b) => a.localeCompare(b))} defaultOpen={false} catExpanded={catExpanded} toggleCat={toggleCat} openProducts={openProducts} toggleProduct={toggleProduct} parts={parts} products={products} isReady={isReady} productHas3mf={productHas3mf} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={uploadProduct3mf} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />
+        <Section key={cat} title={cat} titleColor={null} items={cats[cat].sort((a, b) => a.localeCompare(b))} defaultOpen={false} catExpanded={catExpanded} toggleCat={toggleCat} openProducts={openProducts} toggleProduct={toggleProduct} parts={parts} products={products} isReady={isReady} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={handle3mfUpload} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />
       ))}
 
       {activeItems.length === 0 && otherItems.length === 0 && (
         <p style={{ color: 'var(--text2)', padding: '1rem 0' }}>no parts yet — add a product to get started.</p>
       )}
+
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'var(--bg2)', border: '0.5px solid var(--border2)', borderRadius: 8, padding: '10px 20px', fontSize: 13, color: 'var(--text)', boxShadow: '0 4px 16px rgba(0,0,0,.18)', zIndex: 9999, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+          ✓ {toast}
+        </div>
+      )}
     </div>
   );
 }
 
-function Section({ title, titleColor, items, defaultOpen, catExpanded, toggleCat, openProducts, toggleProduct, parts, products, isReady, productHas3mf, appSettings, openModal, archiveProduct, togglePreSliced, openProductFolder, openProductInSlicer, uploadProduct3mf, uploadProductImage, openExternalUrl, isElectron }) {
+function Section({ title, titleColor, items, defaultOpen, catExpanded, toggleCat, openProducts, toggleProduct, parts, products, isReady, appSettings, openModal, archiveProduct, togglePreSliced, openProductFolder, openProductInSlicer, uploadProduct3mf, uploadProductImage, openExternalUrl, isElectron }) {
   const neverSet = !catExpanded.has(title) && !catExpanded.has('__closed__' + title);
   const isOpen = neverSet ? defaultOpen : catExpanded.has(title);
   const allExpanded = items.every(i => openProducts.has(i));
@@ -125,7 +145,7 @@ function Section({ title, titleColor, items, defaultOpen, catExpanded, toggleCat
       {isOpen && (
         <div className="product-list">
           {items.map(item => (
-            <ProductCard key={item} item={item} parts={parts} products={products} isOpen={openProducts.has(item)} isReady={isReady(item)} toggleProduct={toggleProduct} productHas3mf={productHas3mf} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={uploadProduct3mf} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />
+            <ProductCard key={item} item={item} parts={parts} products={products} isOpen={openProducts.has(item)} isReady={isReady(item)} toggleProduct={toggleProduct} appSettings={appSettings} openModal={openModal} archiveProduct={archiveProduct} togglePreSliced={togglePreSliced} openProductFolder={openProductFolder} openProductInSlicer={openProductInSlicer} uploadProduct3mf={uploadProduct3mf} uploadProductImage={uploadProductImage} openExternalUrl={openExternalUrl} isElectron={isElectron} />
           ))}
         </div>
       )}
@@ -133,7 +153,7 @@ function Section({ title, titleColor, items, defaultOpen, catExpanded, toggleCat
   );
 }
 
-function ProductCard({ item, parts, products, isOpen, isReady, toggleProduct, productHas3mf, appSettings, openModal, archiveProduct, togglePreSliced, openProductFolder, openProductInSlicer, uploadProduct3mf, uploadProductImage, openExternalUrl, isElectron }) {
+function ProductCard({ item, parts, products, isOpen, isReady, toggleProduct, appSettings, openModal, archiveProduct, togglePreSliced, openProductFolder, openProductInSlicer, uploadProduct3mf, uploadProductImage, openExternalUrl, isElectron }) {
   const ps = parts.filter(p => p.item === item);
   const tp = ps.reduce((a, p) => a + p.qty, 0), dp = ps.reduce((a, p) => a + p.printed, 0);
   const pct = tp > 0 ? Math.round(dp / tp * 100) : 0;
@@ -143,26 +163,51 @@ function ProductCard({ item, parts, products, isOpen, isReady, toggleProduct, pr
   const prN = ps.filter(p => p.status === 'printing').length;
   const dN = ps.filter(p => p.status === 'done').length;
   const iconPath = products[item]?.imagePath;
-  const has3mf = productHas3mf(item);
+  const has3mf = !!(products[item]?.threeMfFiles?.length || products[item]?.threeMfFolder);
   const isPreSliced = products[item]?.preSliced;
+  const [imgOpen, setImgOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!imgOpen) return;
+    const handler = (e) => { if (e.key === 'Escape') setImgOpen(false); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [imgOpen]);
 
   return (
     <div className={`product-card${isReady ? ' ready' : ''}`}>
+      {imgOpen && localFileUrl(iconPath) && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}
+          onClick={() => setImgOpen(false)}
+        >
+          <img
+            src={localFileUrl(iconPath)}
+            alt={esc(item)}
+            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 10, boxShadow: '0 8px 48px rgba(0,0,0,0.6)' }}
+            onClick={e => e.stopPropagation()}
+          />
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px' }}>
+            <span style={{ color: '#fff', fontSize: 15, fontWeight: 500, textShadow: '0 1px 4px rgba(0,0,0,.6)' }}>{esc(item)}</span>
+            <button style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: 20, width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={() => setImgOpen(false)}>✕</button>
+          </div>
+        </div>
+      )}
       <div className="product-header" onClick={() => toggleProduct(item)}>
         <div className="product-title-wrap">
           {localFileUrl(iconPath) ? (
-            <img className="product-icon" src={localFileUrl(iconPath)} alt="" onError={e => e.target.style.display = 'none'} />
+            <img className="product-icon" src={localFileUrl(iconPath)} alt="" style={{ cursor: 'zoom-in' }} onClick={e => { e.stopPropagation(); setImgOpen(true); }} onError={e => e.target.style.display = 'none'} />
           ) : (
             <div className="product-icon-placeholder" title="click to add image" style={{ fontSize: 16 }} onClick={e => { e.stopPropagation(); uploadProductImage(item); }}>🖼</div>
           )}
           <span className="product-title">{esc(item)}</span>
-          <button className="rename-btn" onClick={e => { e.stopPropagation(); openModal('manage-product', { item }); }}>manage</button>
-          <button className="rename-btn" style={{ color: 'var(--amber-text)' }} title="move to archive" onClick={e => { e.stopPropagation(); if (confirm(`Archive "${item}"?`)) archiveProduct(item); }}>↓ archive</button>
-          {isElectron && <button className="rename-btn" title="open product folder" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); openProductFolder(item); }}>🗂 folder</button>}
-          {isElectron && <button className="rename-btn" title="open in slicer" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); openProductInSlicer(item); }}>▶ slicer</button>}
+          <button className="rename-btn" onClick={e => { e.stopPropagation(); openModal('manage-product', { item }); }}>Manage</button>
+          <button className="rename-btn" style={{ color: 'var(--amber-text)' }} title="move to archive" onClick={e => { e.stopPropagation(); if (confirm(`Archive "${item}"?`)) archiveProduct(item); }}>↓ Archive</button>
+          {isElectron && <button className="rename-btn" title="open product folder" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); openProductFolder(item); }}>🗂 Folder</button>}
+          {isElectron && <button className="rename-btn" title="open in slicer" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); openProductInSlicer(item); }}>▶ Slicer</button>}
           {isElectron && <button className="rename-btn" title="upload 3MF file" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); uploadProduct3mf(item); }}>↑ 3MF</button>}
           {appSettings.invPopup !== false && (
-            <button className="rename-btn" title="add to inventory" style={{ fontSize: 12, color: 'var(--green-dark)' }} onClick={e => { e.stopPropagation(); openModal('quick-add', { productName: item }); }}>+ inv</button>
+            <button className="rename-btn" title="add to inventory" style={{ fontSize: 12, color: 'var(--green-dark)' }} onClick={e => { e.stopPropagation(); openModal('quick-add', { productName: item }); }}>+ Inv</button>
           )}
           {products[item]?.n3dUrl && (
             <button className="rename-btn" title="view on N3D Melbourne" style={{ fontSize: 12, color: '#3C3489' }} onClick={e => { e.stopPropagation(); openExternalUrl(products[item].n3dUrl); }}>🌐 website</button>

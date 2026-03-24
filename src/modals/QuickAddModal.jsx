@@ -17,7 +17,7 @@ export default function QuickAddModal() {
   };
 
   const adjustQty = (delta) => {
-    const newQty = Math.max(1, qty + delta);
+    const newQty = Math.max(0, qty + delta);
     setQty(newQty);
     // Auto-fill last location
     if (locs.length) {
@@ -31,10 +31,10 @@ export default function QuickAddModal() {
     <div id="quick-add-modal" style={{ display: '' }}>
       <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
         <div className="modal" style={{ width: 360 }}>
-          <h3>add to inventory</h3>
+          <h3>Add to inventory</h3>
           <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 18, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{productName}</p>
           <div className="field" style={{ marginBottom: 20 }}>
-            <label>quantity built</label>
+            <label>Stock on hand</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: 8 }}>
               <button onClick={() => adjustQty(-1)} style={{ width: 64, height: 64, border: '0.5px solid var(--border2)', background: 'var(--bg2)', cursor: 'pointer', fontSize: 30, fontWeight: 300, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius) 0 0 var(--radius)', fontFamily: 'inherit' }}>−</button>
               <div style={{ flex: 1, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, fontWeight: 700, borderTop: '0.5px solid var(--border2)', borderBottom: '0.5px solid var(--border2)', color: 'var(--text)', background: 'var(--bg)' }}>{qty}</div>
@@ -58,7 +58,7 @@ export default function QuickAddModal() {
           )}
           <div className="modal-footer">
             <button className="btn" onClick={closeModal}>cancel</button>
-            <button className="btn btn-success" onClick={() => confirmQuickAdd(productName, qty, locations)}>add to inventory</button>
+            <button className="btn btn-success" onClick={() => confirmQuickAdd(productName, qty, locations)}>Add to inventory</button>
           </div>
         </div>
       </div>

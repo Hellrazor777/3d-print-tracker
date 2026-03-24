@@ -872,7 +872,7 @@ export function AppProvider({ children }) {
   }, [appSettings.threeMfFolder, appSettings.slicer]);
 
   const uploadProduct3mf = useCallback(async (item) => {
-    if (!window.electronAPI) return;
+    if (!window.electronAPI) return 0;
     const result = await window.electronAPI.upload3mf(item, appSettings.threeMfFolder);
     if (result?.files?.length) {
       setProducts(prev => ({
@@ -881,7 +881,9 @@ export function AppProvider({ children }) {
       setTimeout(async () => {
         await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
       }, 0);
+      return result.files.length;
     }
+    return 0;
   }, [appSettings.threeMfFolder]);
 
   // Set product image path (used after N3D image download, or any programmatic image update)
