@@ -20,7 +20,7 @@ async function setTheme(theme) {
     const btn = document.getElementById('theme-' + t);
     if (btn) btn.classList.toggle('active', t === theme);
   });
-  if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+  await saveSettings(appSettings);
 }
 
 // ── COLLAPSIBLE SECTIONS ──
@@ -102,7 +102,7 @@ function renderCategoryManager() {
       const order = getCategoryOrder();
       [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
       appSettings.categoryOrder = order;
-      if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+      await saveSettings(appSettings);
       renderCategoryManager();
       renderProductView();
     });
@@ -115,7 +115,7 @@ function renderCategoryManager() {
       const order = getCategoryOrder();
       [order[idx], order[idx + 1]] = [order[idx + 1], order[idx]];
       appSettings.categoryOrder = order;
-      if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+      await saveSettings(appSettings);
       renderCategoryManager();
       renderProductView();
     });
@@ -132,7 +132,7 @@ function renderCategoryManager() {
       Object.keys(products).forEach(k => { if (products[k].category === cat) products[k].category = ''; });
       if (appSettings.extraCategories) appSettings.extraCategories = appSettings.extraCategories.filter(c => c !== cat);
       if (appSettings.categoryOrder) appSettings.categoryOrder = appSettings.categoryOrder.filter(c => c !== cat);
-      if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+      await saveSettings(appSettings);
       await persist(); renderCategoryManager(); renderProductView();
     });
     row.appendChild(name); row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(renameBtn); row.appendChild(delBtn);
@@ -166,7 +166,7 @@ async function confirmRenameCat() {
     const idx = appSettings.categoryOrder.indexOf(old);
     if (idx !== -1) appSettings.categoryOrder[idx] = newCat;
   }
-  if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+  await saveSettings(appSettings);
   await persist();
   closeRenameCat();
   renderCategoryManager(); renderProductView();
@@ -181,7 +181,7 @@ async function addCategory() {
   if (!appSettings.extraCategories.includes(name)) appSettings.extraCategories.push(name);
   if (!appSettings.categoryOrder) appSettings.categoryOrder = getCategoryOrder();
   if (!appSettings.categoryOrder.includes(name)) appSettings.categoryOrder.push(name);
-  if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+  await saveSettings(appSettings);
   renderCategoryManager();
 }
 
@@ -211,7 +211,7 @@ function renderStorageLocationManager() {
     upBtn.addEventListener('click', async () => {
       if (!appSettings.storageLocations) appSettings.storageLocations = [...locs];
       [appSettings.storageLocations[idx-1], appSettings.storageLocations[idx]] = [appSettings.storageLocations[idx], appSettings.storageLocations[idx-1]];
-      if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+      await saveSettings(appSettings);
       renderStorageLocationManager();
     });
     const renameBtn = document.createElement('button');
@@ -240,7 +240,7 @@ function renderStorageLocationManager() {
       if (!appSettings.storageLocations) appSettings.storageLocations = [...locs];
       appSettings.storageLocations = appSettings.storageLocations.filter(l => l !== loc);
       inventory.forEach(item => { if (item.storage) delete item.storage[loc]; });
-      if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+      await saveSettings(appSettings);
       await persist();
       renderStorageLocationManager();
       renderInventoryView();
@@ -262,7 +262,7 @@ async function addStorageLocation() {
     if (!item.storage) item.storage = {};
     if (item.storage[name] === undefined) item.storage[name] = 0;
   });
-  if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+  await saveSettings(appSettings);
   await persist();
   renderStorageLocationManager();
   renderInventoryView();
@@ -293,7 +293,7 @@ function renderOutgoingDestManager() {
     upBtn.addEventListener('click', async () => {
       if (!appSettings.outgoingDests) appSettings.outgoingDests = [...dests];
       [appSettings.outgoingDests[idx-1], appSettings.outgoingDests[idx]] = [appSettings.outgoingDests[idx], appSettings.outgoingDests[idx-1]];
-      if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+      await saveSettings(appSettings);
       renderOutgoingDestManager();
     });
     const renameBtn = document.createElement('button');
@@ -308,7 +308,7 @@ function renderOutgoingDestManager() {
       if (!confirm('Remove destination "' + dest + '"?')) return;
       if (!appSettings.outgoingDests) appSettings.outgoingDests = [...dests];
       appSettings.outgoingDests.splice(idx, 1);
-      if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+      await saveSettings(appSettings);
       renderOutgoingDestManager();
     });
     row.appendChild(name); row.appendChild(upBtn); row.appendChild(renameBtn); row.appendChild(delBtn);
@@ -323,7 +323,7 @@ async function addOutgoingDest() {
   input.value = '';
   if (!appSettings.outgoingDests) appSettings.outgoingDests = getOutgoingDests();
   if (!appSettings.outgoingDests.includes(name)) appSettings.outgoingDests.push(name);
-  if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+  await saveSettings(appSettings);
   renderOutgoingDestManager();
 }
 
@@ -352,7 +352,7 @@ confirmRenameCat = async function() {
     if (!newName || newName === _renameDestTarget.name) { closeRenameCat(); return; }
     if (!appSettings.outgoingDests) appSettings.outgoingDests = getOutgoingDests();
     appSettings.outgoingDests[_renameDestTarget.idx] = newName;
-    if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+    await saveSettings(appSettings);
     closeRenameCat();
     renderOutgoingDestManager();
   } else if (mode === 'storage') {
@@ -370,7 +370,7 @@ confirmRenameCat = async function() {
         delete item.storage[oldName];
       }
     });
-    if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+    await saveSettings(appSettings);
     await persist();
     closeRenameCat();
     renderStorageLocationManager();
@@ -406,7 +406,7 @@ async function saveSettingsModal() {
   appSettings.bambuPath = document.getElementById('s-bambu-path').value;
   appSettings.orcaPath = document.getElementById('s-orca-path').value;
   appSettings.invPopup = document.getElementById('s-inv-popup').checked;
-  if (window.electronAPI) await window.electronAPI.saveSettings(appSettings);
+  await saveSettings(appSettings);
   closeSettings();
   renderInventoryView();
   renderProductView();

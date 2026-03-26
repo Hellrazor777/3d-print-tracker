@@ -1,172 +1,126 @@
-# 3D Print Tracker — Project Memory
+# 3D Print Tracker — assistant project memory
+
+Permanent context for AI coding agents working in this repo: stack, layout, conventions, sharp edges, and planned work. Update this file when architecture or workflows materially change.
+
+---
 
 ## Stack
-- **Runtime**: Electron v29 (Node.js main process + Chromium renderer)
-- **UI**: React 18 + Vite v5 (JSX, hooks, Context API — no external UI library)
-- **Packaging**: electron-builder (Windows NSIS installer)
-- **Data storage**: Local JSON files via Node.js `fs` (`data.json`, `settings.json` in AppData)
-- **Mobile server**: Node.js `http` module (port 3000, auto-retries up to +10), serves `src/mobile.html`
-- **API integration**: N3D Melbourne API (HTTPS proxy through main process — CORS workaround)
 
-## Project structure
+- **Desktop**: Electron 29 (CommonJS `main` + `preload`), Chromium renderer.
+- **UI**: React 18, Vite 5, JSX, Context API only (no component library).
+- **Packaging**: electron-builder, Windows NSIS → `dist/`.
+- **Data**: `data.json` + `settings.json` under the app userData dir (typically `%APPDATA%\3d-print-tracker\` on Windows).
+- **Companion**: Node `http` server in `src/main/server.js`, binds `0.0.0.0`, port 3000 with auto-retry up to +10; serves `src/mobile.html`.
+- **N3D Melbourne**: HTTPS `https://www.n3dmelbourne.com/api/v1` — primary path is **renderer `fetch`** (`src/lib/n3dClient.js`, Bearer auth per [public API summary](https://www.n3dmelbourne.com/llms.txt) / [designs API docs](https://www.n3dmelbourne.com/resources/docs/designs-api)); **fallback** to main-process proxy (`src/main/ipc/n3d.js`) on transport failures in Electron only.
+
+---
+
+## Repository layout (high-signal files)
+
 ```
 3d-print-tracker/
-├── main.js                      # Electron entry point (window, protocol, app lifecycle)
-├── preload.js                   # Context bridge (exposes electronAPI to renderer)
-├── vite.config.js               # Vite config — root: src, base: './', outDir: ../dist-web
+├── main.js                 # BrowserWindow, localfile:// protocol, IPC registration, server start
+├── preload.js              # contextBridge → window.electronAPI (invoke + subscription cleanup)
+├── vite.config.js
 ├── package.json
-├── .eslintrc.json               # ESLint config (Node for main, Browser+JSX for src/**/*.jsx)
+├── .eslintrc.json          # Node: main/preload/src/main; browser: src/**/*.jsx, src/lib, src/js
+├── CLAUDE.md               # This file — agent-oriented project memory
 ├── src/
-│   ├── index.html               # Vite entry HTML (mounts #root)
-│   ├── main.jsx                 # React root — renders <AppProvider><App /></AppProvider>
-│   ├── App.jsx                  # Top-level layout, view routing, modal rendering
-│   ├── mobile.html              # Phone inventory companion (vanilla JS, served by local server)
-│   ├── styles/
-│   │   └── main.css             # All app CSS (light + dark theme via CSS vars)
-│   ├── context/
-│   │   └── AppContext.jsx       # Single source of truth — all state, actions, IPC calls
-│   ├── components/
-│   │   ├── TopBar.jsx           # Nav bar, view buttons, search, export CSV
-│   │   └── Stats.jsx            # Summary stat pills
-│   ├── views/
-│   │   ├── ProductView.jsx      # Product list, category sections, parts table
-│   │   ├── ArchiveView.jsx      # Archived products
-│   │   ├── ColourView.jsx       # Colour/filament grouping view
-│   │   └── InventoryView.jsx    # Inventory tracking view
-│   ├── modals/
-│   │   ├── PartModal.jsx        # Add/edit part
-│   │   ├── AddProductModal.jsx  # Add product (with duplicate name warning)
-│   │   ├── ManageProductModal.jsx
-│   │   ├── SettingsModal.jsx    # Settings, categories, storage locations, outgoing dests
-│   │   ├── StatusModal.jsx      # Change part/sub-part status
-│   │   ├── QuickAddModal.jsx
-│   │   ├── CompletionModal.jsx
-│   │   ├── SubpartModal.jsx
-│   │   ├── N3DModal.jsx         # N3D Melbourne design browser (Electron-only, CORS proxy)
-│   │   ├── ImportModal.jsx      # CSV import
-│   │   ├── ConflictModal.jsx    # CSV import conflict resolution
-│   │   ├── AddInventoryModal.jsx
-│   │   └── RenameCatModal.jsx
-│   └── main/                    # Electron main process modules (CommonJS)
-│       ├── server.js            # Local HTTP server for mobile companion
-│       └── ipc/
-│           ├── data.js          # IPC: load-data, save-data, settings, local IP
-│           ├── files.js         # IPC: CSV dialogs, 3MF upload, folder/image ops, slicer
-│           └── n3d.js           # IPC: N3D API proxy (Node https — bypasses CORS)
-├── build-resources/
-│   └── icon.ico
-├── dist-web/                    # Vite production build output (gitignored)
-└── dist/                        # electron-builder installer output (gitignored)
+│   ├── index.html, main.jsx, App.jsx
+│   ├── mobile.html         # Phone UI; relative fetch to /data, /inventory
+│   ├── styles/main.css
+│   ├── context/AppContext.jsx   # All app state + persistence + most IPC wrappers
+│   ├── views/, modals/          # ProductView, InventoryView, N3DModal, …
+│   ├── lib/n3dClient.js    # fetch-first N3D client + Electron IPC fallback
+│   └── main/
+│       ├── server.js         # GET /data, POST /inventory (validated), GET /
+│       └── ipc/data.js, files.js, n3d.js
 ```
 
-## Dev workflow
-- **Dev (both)**: `npm run dev` — starts Vite dev server (port 5173) + Electron pointing at it
-- **Dev (web only)**: `npm run dev:web` — Vite only, opens browser
-- **Lint**: `npm run lint` — ESLint across main process JS and all JSX
-- **Lint fix**: `npm run lint:fix`
-- **Build**: `npm run build` — lint → `vite build` → `electron-builder --win` → produces `dist/3D Print Tracker Setup X.X.X.exe`
+---
 
-## Key conventions
-- React Context (`AppContext`) is the single source of truth — all state and actions live there
-- `isElectron` flag gates all `window.electronAPI` calls (file dialogs, IPC, local images)
-- `localFileUrl(path)` converts local filesystem paths to `localfile://` URLs for Electron's custom protocol handler
-- `localfile://` protocol registered in `main.js` — lets renderer load images from disk when served over HTTP in dev
-- Main process uses CommonJS `require`/`module.exports`; renderer uses ES modules
-- IPC modules export a `register(ipcMain, ...)` function
-- Data auto-saved to `AppData/Roaming/3d-print-tracker/data.json` on every change
-- Git: ask for permission before committing
+## Commands
 
-## Electron-only features (won't work in browser)
-- Data persistence (IPC to main process for file read/write)
-- File dialogs (image upload, CSV, 3MF)
-- Local image loading via `localfile://` protocol
-- N3D API (CORS — must proxy through Node)
-- Mobile companion server (starts in main process)
+- **`npm run dev`**: Vite (5173) + Electron (loads dev URL).
+- **`npm run dev:web`**: Vite only (browser; no `electronAPI` except stubs — localStorage for data in context).
+- **`npm run lint` / `lint:fix`**: ESLint (`main.js`, `preload.js`, `src/main/**/*.js`, `src/lib/**/*.js`, `src/**/*.jsx`).
+- **`npm run build`**: lint → `vite build` → `electron-builder --win`.
+- **`npm run build:web`**: production static assets → `dist-web/`.
 
-## Remote mobile access
-- On local WiFi: phone connects to `http://<PC-IP>:3000` automatically
-- Outside local network: use **Tailscale** (free) — install on PC + phone, no code changes needed
+---
 
-## Versions
-- v1.0.0 — Initial release
-- v2.0.0 — Category grouping, colour view, sub-parts, inventory, N3D integration, mobile companion
-- v2.1.0 — UI polish, theme toggle, category manager, pre-sliced 3MF flag, manage modal, custom icon
-- Codebase refactor — split monolithic index.html + main.js into React/Vite modular structure
-- v3.0.0 — Printing/Commenced/Ready workflow, main search, +inv popup, N3D select-all, stocktake mode, mobile collapsible sections, port auto-retry, React migration, production build pipeline
+## Conventions
 
-## Recent fixes (on main, not yet committed)
-- **3MF badge stale ref fix**: `ProductCard` now computes `has3mf` directly from `products` state prop instead of `productHas3mf()` (which read from `productsRef` — a `useEffect`-synced ref that lagged one render behind after upload)
-- **3MF upload toast**: `handle3mfUpload` wrapper in `ProductView` shows a fixed bottom toast for 3s after upload (`uploadProduct3mf` returns file count)
-- **ColourView search**: search bar filters by colour name, product name, or part name
-- **ColourView clickable products**: product name subtitle is a clickable link — calls `setView('products')` + `toggleProduct(item)` to navigate and expand
+- **`AppContext.jsx`** is the single source of truth: state, derived helpers, save/load, modal triggers.
+- **`isElectron`**: `!!window.electronAPI` — gates dialogs, disk paths, `localfile://` images, optional N3D image download to product folder.
+- **`localFileUrl(path)`** (in `AppContext.jsx`): maps absolute disk paths to `localfile:///…` for the custom protocol in `main.js` (dev + prod).
+- **IPC modules** export `register(ipcMain, …)`.
+- **Main = CommonJS**; **renderer = ESM**.
+- **Persistence shape** written by `saveData`: `{ parts, products, inventory, expandedCats }` (+ whatever else the app adds over time).
+- **`threeMfFiles`**: array of **filename strings** (e.g. from 3MF upload IPC returning `fileName`); not `{ files: [] }`.
+- **Git**: confirm with the user before committing.
 
-## Branch: feature/web-app (NOT YET CREATED — start here next session)
+---
 
-### Goal
-Public web app with cloud sync — any user visits a URL, signs up, and their data follows them across PC, phone, and tablet. Electron desktop app stays unchanged on `main`.
+## Mobile server & security posture
 
-### To create the branch
-Run on your Windows machine: `git checkout -b feature/web-app`
+- Binds **LAN-wide** by design (`0.0.0.0`). **`POST /inventory`**:
+  - Max body **512 KiB**; rejects invalid JSON; validates a **normalized inventory row** (safe `id`, required `name`, numeric `built`, sanitized `storage` map, capped `distributions`).
+  - Merges into an existing row by `id` so old/extra fields are preserved; appends if new.
+- **`GET /data`**: full snapshot (any device on LAN can read). Accepted for this project.
+- CORS: `*` for simple phone client.
 
-### Architecture decisions
-- **Backend**: Supabase (free tier — supabase.com). Postgres + auth + real-time. No self-hosting needed.
-- **Data model**: One row per user in `user_data` table. Columns: `user_id`, `data` (jsonb — mirrors current `data.json`), `settings` (jsonb — mirrors `settings.json`), `updated_at`
-- **Auth**: Supabase Auth — email/password + magic link option
-- **Hosting**: Netlify (free) — auto-deploys from GitHub on push
-- **Images**: Hidden on web for now (`isElectron` gate) — Supabase Storage can be added later
-- **N3D Melbourne**: Hidden on web (needs CORS proxy, not worth it for public users)
-- **Electron app**: Zero changes — still reads/writes local files, no login required
+---
 
-### Supabase SQL to run (in Supabase SQL editor when project is created)
-```sql
-create table public.user_data (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references auth.users not null unique,
-  data jsonb not null default '{}',
-  settings jsonb not null default '{}',
-  updated_at timestamptz not null default now()
-);
+## N3D UI behaviour (`N3DModal.jsx`)
 
-alter table public.user_data enable row level security;
+- Query params align with API: **`category`**: `'' | standard | character`; **`profile`**: `ams | split` (default **ams**).
+- **`loadPage`** does not gate on stale `totalPages`; API pagination is authoritative.
+- **Auto-connect**: on first open, if `appSettings.n3dApiKey` was already set, validates via `/version` then loads page 1; **Strict Mode**: async work cancelled on unmount to avoid double state updates dominating.
+- Cover images for imports: Electron + `threeMfFolder` only; web can still browse/import metadata.
 
-create policy "Users can view own data" on public.user_data
-  for select using (auth.uid() = user_id);
+---
 
-create policy "Users can insert own data" on public.user_data
-  for insert with check (auth.uid() = user_id);
+## Known integration details
 
-create policy "Users can update own data" on public.user_data
-  for update using (auth.uid() = user_id);
-```
+- **`userData` path**: `main.js` calls `app.setPath('userData', …/3d-print-tracker)` so the **installed EXE** and **`npm start`** share `%APPDATA%\3d-print-tracker`. Without this, Windows used different Roaming folder names from `productName` vs package `name`, which looked like “data wiped” (sample data only).
+- **`upload-image` IPC** returns `{ ok, destPath }` (not `path`). Call sites accept `destPath || path`.
+- **`upload-3mf` IPC** returns `{ fileName, destPath, productFolder }` or `{ error }` — not `files[]`.
+- **`get-local-ip` IPC** returns **`IPv4:port`** (e.g. `192.168.1.5:3000`). Inventory UI explains host/port and warns if host looks like localhost.
+- **`onInventoryUpdated` in preload**: registers listener and returns **cleanup**; `AppContext` unsubscribes on unmount.
 
-### Files to create (new)
-- `src/lib/supabase.js` — Supabase client (reads from `import.meta.env.VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`)
-- `src/components/AuthModal.jsx` — sign in / sign up screen shown on web when not logged in
-- `netlify.toml` — build command + publish dir + SPA redirect rule
-- `.env.example` — template (safe to commit): `VITE_SUPABASE_URL=` and `VITE_SUPABASE_ANON_KEY=`
+---
 
-### Files to modify
-- `src/context/AppContext.jsx` — replace localStorage fallback (lines 18–33) with Supabase reads/writes; add `user` + `authChecked` state; `init()` waits for auth on web; `supabase.auth.onAuthStateChange` listener
-- `src/App.jsx` — add auth gate: if web + `!user` → show `<AuthModal />` instead of main app
-- `package.json` — add `@supabase/supabase-js` to dependencies; add `"deploy": "vite build"` script
+## Optional future: `feature/web-app` (not started)
 
-### Auth flow (web only)
-1. App loads → `supabase.auth.getSession()` → sets `user` + `authChecked`
-2. If no session → `<AuthModal />` (sign in / sign up)
-3. On login → `onAuthStateChange` fires → `user` set → `init()` runs → data loads from Supabase
-4. On logout → `user` cleared → `<AuthModal />` shown again
-5. Electron: skips all of this, `user` set to a fake local sentinel, `init()` runs immediately
+Goal: hosted SPA + cloud sync while keeping Electron on local files.
 
-### AppContext data flow (web branch)
-- `loadData()` → `supabase.from('user_data').select('data').eq('user_id', user.id).single()`
-- `saveData(d)` → `supabase.from('user_data').upsert({ user_id, data: d }, { onConflict: 'user_id' })`
-- `loadSettings()` → same table, `select('settings')`
-- `saveSettings(s)` → same table, upsert `settings` column
+| Area | Direction |
+|------|-----------|
+| Backend | Supabase (auth + Postgres JSON for `data` / `settings` mirroring current JSON) |
+| Hosting | Netlify; build `dist-web`; env `VITE_SUPABASE_*` |
+| Renderer | `AuthModal`, `src/lib/supabase.js`, gate `App.jsx` when web + no session |
+| **N3D on web** | Already feasible via `n3dClient.js` fetch; hide or rate-limit if needed for public users |
 
-### Netlify setup (user does this after code is ready)
-1. Push `feature/web-app` branch to GitHub
-2. Go to app.netlify.com → New site → Import from GitHub → select repo
-3. Branch: `feature/web-app` (or `main` once merged)
-4. Build command: `npm run build:web`
-5. Publish directory: `dist-web`
-6. Add env vars: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (from Supabase project Settings → API)
+Detailed SQL / Netlify steps were in older notes; re-derive from Supabase docs when implementing.
+
+---
+
+## Changelog (recent substantive work)
+
+- Renderer **N3D** `fetch` + IPC fallback; modal enabled on web with copy about local-only images.
+- **N3D filters** synced to API enums; link to official API docs.
+- **Inventory phone URL** clarified (host/port + localhost hint).
+- **Mobile `POST /inventory`**: size cap + validation + merge updates.
+- **IPC image / 3MF** result shape fixes in `AppContext` / `AddProductModal`.
+- **ProductView** render-time `products` mutation removed.
+- **preload** inventory listener cleanup; **image download** redirect handling in `ipc/files.js`.
+- Removed unused **`optionalDependencies`** Linux Rollup stub from `package.json`.
+
+---
+
+## When editing
+
+- Match existing style: minimal diffs, no drive-by refactors.
+- After logic changes in `src/` or `main`, run **`npm run lint`**.
+- Do not expand scope beyond the task unless the user asks.

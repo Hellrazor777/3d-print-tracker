@@ -1,6 +1,11 @@
 const { app, BrowserWindow, ipcMain, protocol, net } = require('electron');
 const path = require('path');
 
+// Installed builds use `productName` ("3D Print Tracker") for the default userData path; `npm start`
+// uses package `name` ("3d-print-tracker"). Those differ → the EXE was reading an empty folder and
+// showing sample data while your real file lived under Roaming\3d-print-tracker. Pin one directory.
+app.setPath('userData', path.join(app.getPath('appData'), '3d-print-tracker'));
+
 // Set NODE_ENV=development when running via "npm run dev:electron"
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';

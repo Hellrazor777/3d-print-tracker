@@ -184,7 +184,7 @@ let builtDelta = 0;
 
 async function reload() {
   try {
-    const res = await fetch('/data');
+    const res = await fetch('/data?t=' + Date.now(), { cache: 'no-store' });
     const data = await res.json();
     inventory = data.inventory || [];
     document.getElementById('last-sync').textContent = 'updated ' + new Date().toLocaleTimeString();
@@ -556,6 +556,16 @@ async function logDistribution(id) {
   const note = (document.getElementById('log-note-' + id)||{}).value || '';
   if (!item.distributions) item.distributions = [];
   item.distributions.push({ dest: selectedDest, qty: logQty, note, date: new Date().toISOString() });
+  // Reduce storage locations to stay in sync with new on-hand
+  if (item.storage) {
+    let remaining = logQty;
+    for (const loc of Object.keys(item.storage)) {
+      if (remaining <= 0) break;
+      const take = Math.min(item.storage[loc] || 0, remaining);
+      item.storage[loc] = (item.storage[loc] || 0) - take;
+      remaining -= take;
+    }
+  }
   await saveItem(item);
   renderList();
 }
@@ -563,7 +573,13 @@ async function logDistribution(id) {
 async function removeDist(id, index) {
   const item = inventory.find(i => i.id === id);
   if (!item || !item.distributions) return;
+  const removed = item.distributions[index];
   item.distributions.splice(index, 1);
+  // Restore the removed qty back into storage (add to last location)
+  if (removed?.qty && item.storage) {
+    const locs = Object.keys(item.storage);
+    if (locs.length) item.storage[locs[locs.length - 1]] = (item.storage[locs[locs.length - 1]] || 0) + removed.qty;
+  }
   await saveItem(item);
   renderList();
 }

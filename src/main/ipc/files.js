@@ -5,6 +5,53 @@ const http = require('http');
 const { dialog, shell } = require('electron');
 const { execFile } = require('child_process');
 
+function downloadImageToPath(url, destPath, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    if (redirectCount > 5) {
+      reject(new Error('Too many redirects'));
+      return;
+    }
+
+    const lib = url.startsWith('https') ? https : http;
+    const file = fs.createWriteStream(destPath);
+    const request = lib.get(url, res => {
+      if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+        file.destroy();
+        fs.unlink(destPath, () => {});
+        const nextUrl = res.headers.location.startsWith('http')
+          ? res.headers.location
+          : new URL(res.headers.location, url).toString();
+        res.resume();
+        resolve(downloadImageToPath(nextUrl, destPath, redirectCount + 1));
+        return;
+      }
+
+      if (res.statusCode && res.statusCode >= 400) {
+        file.destroy();
+        fs.unlink(destPath, () => {});
+        res.resume();
+        reject(new Error('HTTP ' + res.statusCode));
+        return;
+      }
+
+      res.pipe(file);
+      file.on('finish', () => {
+        file.close(resolve);
+      });
+      file.on('error', err => {
+        fs.unlink(destPath, () => {});
+        reject(err);
+      });
+    });
+
+    request.on('error', err => {
+      file.destroy();
+      fs.unlink(destPath, () => {});
+      reject(err);
+    });
+  });
+}
+
 module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) {
   // ── CSV dialogs ──
   ipcMain.handle('open-csv-dialog', async () => {
@@ -28,6 +75,7 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
 
   // ── 3MF upload ──
   ipcMain.handle('upload-3mf', async (_, { productName, destFolder }) => {
+    if (!destFolder) return { error: 'No 3MF root folder configured' };
     const result = await dialog.showOpenDialog({
       title: 'Select 3MF file',
       filters: [{ name: '3MF Files', extensions: ['3mf'] }, { name: 'All Files', extensions: ['*'] }],
@@ -37,11 +85,13 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
     const srcPath = result.filePaths[0];
     const fileName = path.basename(srcPath);
     const safeName = productName.replace(/[<>:"\/\\|?*]/g, '_');
-    const productFolder = path.join(destFolder, safeName);
-    if (!fs.existsSync(productFolder)) fs.mkdirSync(productFolder, { recursive: true });
-    const destPath = path.join(productFolder, fileName);
-    try { fs.copyFileSync(srcPath, destPath); return { fileName, destPath, productFolder }; }
-    catch(e) { return { error: e.message }; }
+    try {
+      const productFolder = path.join(destFolder, safeName);
+      if (!fs.existsSync(productFolder)) fs.mkdirSync(productFolder, { recursive: true });
+      const destPath = path.join(productFolder, fileName);
+      fs.copyFileSync(srcPath, destPath);
+      return { fileName, destPath, productFolder };
+    } catch(e) { return { error: e.message }; }
   });
 
   // ── Open folder in Explorer ──
@@ -89,7 +139,8 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
 
     try {
       if (fs.existsSync(slicerPath)) {
-        execFile(slicerPath, [targetFile], { detached: true });
+        const child = execFile(slicerPath, [targetFile], { detached: true, stdio: 'ignore' });
+        child.unref();
         return { ok: true };
       } else {
         await shell.openPath(targetFile);
@@ -103,20 +154,7 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
     try {
       if (!fs.existsSync(destFolder)) fs.mkdirSync(destFolder, { recursive: true });
       const destPath = path.join(destFolder, fileName);
-      await new Promise((resolve, reject) => {
-        const lib = url.startsWith('https') ? https : http;
-        const file = fs.createWriteStream(destPath);
-        lib.get(url, res => {
-          if (res.statusCode === 301 || res.statusCode === 302) {
-            file.close();
-            const downloadImageFn = require('./files').downloadImage;
-            return resolve(downloadImageFn({ url: res.headers.location, destFolder, fileName }));
-          }
-          res.pipe(file);
-          file.on('finish', () => { file.close(); resolve(); });
-          file.on('error', reject);
-        }).on('error', reject);
-      });
+      await downloadImageToPath(url, destPath);
       return { ok: true, destPath };
     } catch(e) { return { ok: false, error: e.message }; }
   });

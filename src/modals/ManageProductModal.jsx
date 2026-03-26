@@ -28,7 +28,7 @@ export default function ManageProductModal() {
 
   return (
     <div id="rename-modal" style={{ display: '' }}>
-      <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="modal-bg" onClick={e => e.stopPropagation()}>
         <div className="modal" style={{ width: 300 }}>
           <h3>Manage Product</h3>
           <div className="field"><label>product name</label><input value={name} onChange={e => setName(e.target.value)} autoFocus /></div>

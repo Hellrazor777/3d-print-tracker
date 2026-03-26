@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { n3dRequest } from '../lib/n3dClient';
 
 function esc(s) { return String(s || ''); }
 
@@ -37,41 +38,52 @@ export default function N3DModal() {
   const [totalDesigns, setTotalDesigns] = useState(0);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  /** @see https://www.n3dmelbourne.com/llms.txt — API: category standard | character; profile ams | split */
   const [category, setCategory] = useState('');
-  const [profile, setProfile] = useState('');
+  const [profile, setProfile] = useState('ams');
   const [colourMode, setColourMode] = useState('together');
   const [importCat, setImportCat] = useState('');
   const [selected, setSelected] = useState(new Set()); // Set of slugs
   const designCache = useRef(new Map()); // slug → design object
   const searchTimer = useRef(null);
+  const loadPageRef = useRef(async () => {});
+  const initialSavedN3dKeyRef = useRef(null);
+  if (initialSavedN3dKeyRef.current === null) {
+    initialSavedN3dKeyRef.current = (appSettings.n3dApiKey || '').trim();
+  }
 
   const cats = getCategoryOrder();
 
   const n3dFetch = useCallback(async (path, method = 'GET', body = null) => {
-    if (!window.electronAPI) return { ok: false, error: 'N3D import requires the desktop app.' };
-    return await window.electronAPI.n3dRequest(path, method, body, apiKey);
+    return n3dRequest(apiKey.trim(), path, method, body);
   }, [apiKey]);
 
   const showStatus = (msg, type) => setStatus({ msg, type });
 
   const loadPage = useCallback(async (p) => {
-    if (p < 1 || p > totalPages) return;
+    if (p < 1) return;
     setLoading(true);
     setPage(p);
-    let path = `/designs?page=${p}&limit=100&profile=${profile}&include=details&locale=AU`;
+    const prof = profile === 'split' ? 'split' : 'ams';
+    let path = `/designs?page=${p}&limit=100&profile=${prof}&include=details&locale=AU`;
     if (search.trim()) path += `&query=${encodeURIComponent(search.trim())}`;
-    if (category) path += `&category=${category}`;
+    if (category === 'standard' || category === 'character') path += `&category=${category}`;
     const res = await n3dFetch(path);
     setLoading(false);
-    if (!res.ok) { showStatus('error: ' + res.error, 'err'); return; }
+    if (!res.ok) { showStatus('error: ' + res.error, 'err'); setDesigns([]); return; }
     const { data, pagination } = res.data;
-    setTotalPages(pagination.total_pages);
-    setTotalDesigns(pagination.total);
-    data.forEach(d => designCache.current.set(d.slug, d));
-    setDesigns(data);
-  }, [n3dFetch, totalPages, profile, search, category]);
+    const tp = Math.max(1, pagination?.total_pages || 1);
+    setTotalPages(tp);
+    setTotalDesigns(pagination?.total ?? 0);
+    const rows = Array.isArray(data) ? data : [];
+    rows.forEach(d => designCache.current.set(d.slug, d));
+    setDesigns(rows);
+    if (p > tp) setPage(tp);
+  }, [n3dFetch, profile, search, category]);
 
-  const connect = async () => {
+  loadPageRef.current = loadPage;
+
+  const connect = useCallback(async () => {
     const key = apiKey.trim();
     if (!key) return;
     showStatus('connecting...', 'info');
@@ -81,12 +93,27 @@ export default function N3DModal() {
     showStatus('', '');
     setConnected(true);
     loadPage(1);
-  };
+  }, [apiKey, appSettings, loadPage, n3dFetch, saveAppSettings]);
 
-  // Auto-connect if we have a saved key
+  // Auto-connect once if settings already contained a key on first open (Strict Mode–safe)
   useEffect(() => {
-    if (apiKey && !connected) connect();
-  }, []); // intentionally run once on mount
+    const saved = initialSavedN3dKeyRef.current || '';
+    if (!saved) return undefined;
+    let cancelled = false;
+    (async () => {
+      showStatus('connecting...', 'info');
+      const res = await n3dRequest(saved, '/version', 'GET', null);
+      if (cancelled) return;
+      if (!res.ok) {
+        showStatus('could not connect: ' + res.error, 'err');
+        return;
+      }
+      showStatus('', '');
+      setConnected(true);
+      await loadPageRef.current(1);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSearchChange = (val) => {
     setSearch(val);
@@ -167,7 +194,7 @@ export default function N3DModal() {
 
   return (
     <div id="n3d-modal" style={{ display: '' }}>
-      <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="modal-bg" onClick={e => e.stopPropagation()}>
         <div className="modal" style={{ width: 780, maxWidth: '96vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 0 }}>
           <div className="settings-header">
             <span className="settings-title">N3D Melbourne</span>
@@ -184,10 +211,14 @@ export default function N3DModal() {
               style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }}
               onKeyDown={e => { if (e.key === 'Enter') connect(); }}
             />
-            <button className="btn btn-primary" onClick={connect} disabled={!isElectron}>
+            <button className="btn btn-primary" onClick={connect}>
               {connected ? 'Reconnect' : 'Connect'}
             </button>
-            {!isElectron && <span style={{ fontSize: 11, color: 'var(--text2)' }}>Desktop only</span>}
+            {!isElectron && (
+              <span style={{ fontSize: 11, color: 'var(--text2)' }} title="Cover images save to disk in the desktop app only">
+                Web — import works; local cover images: desktop only
+              </span>
+            )}
           </div>
 
           {status.msg && (
@@ -204,18 +235,16 @@ export default function N3DModal() {
                   placeholder="Search designs…"
                   style={{ flex: 1, minWidth: 140 }}
                 />
-                <select value={category} onChange={e => { setCategory(e.target.value); loadPage(1); }} style={{ minWidth: 120 }}>
+                <select value={category} onChange={e => { setCategory(e.target.value); loadPage(1); }} style={{ minWidth: 140 }} title="N3D API category filter">
                   <option value="">All categories</option>
-                  <option value="pokemon">Pokémon</option>
-                  <option value="animals">Animals</option>
-                  <option value="characters">Characters</option>
-                  <option value="decorative">Decorative</option>
-                </select>
-                <select value={profile} onChange={e => { setProfile(e.target.value); loadPage(1); }} style={{ minWidth: 120 }}>
-                  <option value="">All profiles</option>
                   <option value="standard">Standard</option>
-                  <option value="premium">Premium</option>
+                  <option value="character">Character</option>
                 </select>
+                <select value={profile} onChange={e => { setProfile(e.target.value); loadPage(1); }} style={{ minWidth: 160 }} title="Print profile for listings (AMS vs split)">
+                  <option value="ams">AMS (multi-material)</option>
+                  <option value="split">Split (single extruder)</option>
+                </select>
+                <a href="https://www.n3dmelbourne.com/resources/docs/designs-api" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--text2)', alignSelf: 'center' }}>API docs</a>
               </div>
 
               {/* Grid */}

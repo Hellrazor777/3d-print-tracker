@@ -9,6 +9,14 @@ async function saveData(data) {
   if (isElectron) return await window.electronAPI.saveData(data);
   localStorage.setItem('3dp_data', JSON.stringify(data));
 }
+async function loadSettings() {
+  if (isElectron) return await window.electronAPI.loadSettings();
+  try { return JSON.parse(localStorage.getItem('3dp_settings')); } catch(e) { return null; }
+}
+async function saveSettings(s) {
+  if (isElectron) return await window.electronAPI.saveSettings(s);
+  localStorage.setItem('3dp_settings', JSON.stringify(s));
+}
 
 // ── State ──
 let parts = [], products = {}, inventory = [], nextId = 1;
@@ -46,11 +54,9 @@ async function init() {
     nextId = 8;
   }
   getItems().forEach(i => openProducts.add(i));
-  // Load settings
-  if (window.electronAPI && window.electronAPI.loadSettings) {
-    const s = await window.electronAPI.loadSettings();
-    if (s) appSettings = { ...appSettings, ...s };
-  }
+  // Load settings (works in both Electron and web via localStorage fallback)
+  const s = await loadSettings();
+  if (s) appSettings = { ...appSettings, ...s };
   applyTheme(appSettings.theme || 'auto');
   render();
   // Check Bambu Studio version after UI is ready

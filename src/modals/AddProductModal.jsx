@@ -31,12 +31,13 @@ export default function AddProductModal() {
   const handleUploadImage = async () => {
     if (!window.electronAPI) return;
     const result = await window.electronAPI.uploadImage('', name + '_cover');
-    if (result?.path) setImagePath(result.path);
+    const path = result?.destPath || result?.path;
+    if (path) setImagePath(path);
   };
 
   return (
     <div id="add-product-modal" style={{ display: '' }}>
-      <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="modal-bg" onClick={e => e.stopPropagation()}>
         <div className="modal" style={{ width: 360, position: 'relative' }}>
           <h3>Add Product</h3>
           <div className="field"><label>product name *</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Pikachu V3" autoFocus /></div>

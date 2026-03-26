@@ -21,12 +21,24 @@ export default function ProductView() {
   const has3mf = (i) => !!(products[i]?.threeMfFiles?.length || products[i]?.threeMfFolder);
 
   const handle3mfUpload = async (item) => {
-    const count = await uploadProduct3mf(item);
-    if (count > 0) setToast(`${count} file${count !== 1 ? 's' : ''} added to ${item}`);
+    if (!appSettings.threeMfFolder) {
+      setToast('⚠ Set a 3MF root folder in Settings first');
+      return;
+    }
+    try {
+      const count = await uploadProduct3mf(item);
+      if (count > 0) setToast(`✓ ${count} file${count !== 1 ? 's' : ''} added to ${item}`);
+      else if (count === 0) { /* cancelled or copy failed silently */ }
+    } catch {
+      setToast('⚠ Upload failed — check the 3MF folder in Settings');
+    }
   };
 
-  const items = [...new Set(parts.map(p => p.item).filter(Boolean))].filter(i => !products[i]?.archived);
-  items.forEach(it => { if (!products[it]) products[it] = { category: '' }; });
+  // Include all non-archived products — even ones with no parts yet (so newly added products are visible)
+  const items = [...new Set([
+    ...Object.keys(products).filter(k => !products[k]?.archived),
+    ...parts.map(p => p.item).filter(Boolean).filter(i => !products[i]?.archived),
+  ])];
 
   // Apply 3MF filter
   const sliceFiltered = sliceFilter === 'presliced' ? items.filter(i => has3mf(i) && products[i]?.preSliced)
@@ -73,7 +85,7 @@ export default function ProductView() {
     return a.localeCompare(b);
   });
 
-  const allItems2 = [...new Set(parts.map(p => p.item).filter(Boolean))].filter(i => !products[i]?.archived);
+  const allItems2 = items;
   const slicedCount = allItems2.filter(i => has3mf(i)).length;
   const preSlicedCount = allItems2.filter(i => has3mf(i) && products[i]?.preSliced).length;
 
@@ -223,7 +235,9 @@ function ProductCard({ item, parts, products, isOpen, isReady, toggleProduct, ap
         )}
         {products[item]?.shiny && <span className="badge-shiny">✨ shiny</span>}
 
-        {isReady ? (
+        {ps.length === 0 ? (
+          <span style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic' }}>no parts yet — expand to add one</span>
+        ) : isReady ? (
           <span className="ready-badge" style={{ cursor: 'pointer' }} title="click to mark as done and add to inventory"
             onClick={e => { e.stopPropagation(); openModal('completion', { productName: item }); }}>
             <span className="ready-dot"></span>ready to build — click when done
@@ -254,12 +268,12 @@ function ProductCard({ item, parts, products, isOpen, isReady, toggleProduct, ap
         </div>
       )}
 
-      {isOpen && <PartsTable parts={ps} openModal={openModal} />}
+      {isOpen && <PartsTable parts={ps} item={item} openModal={openModal} />}
     </div>
   );
 }
 
-function PartsTable({ parts: ps, openModal }) {
+function PartsTable({ parts: ps, item, openModal }) {
   const { reprint, deletePart, adjustSubPrinted, deleteSubPart } = useApp();
 
   return (
@@ -278,12 +292,15 @@ function PartsTable({ parts: ps, openModal }) {
                 {p.stl && <div className="part-row-stl">{esc(p.stl)}</div>}
               </div>
               <div className="colour-cell" style={{ gap: 3, flexWrap: 'wrap' }}>
-                {colours.filter(c => c?.hex).map((c, ci) => (
-                  c.swatchUrl
-                    ? <img key={ci} className="swatch" src={c.swatchUrl} title={esc(c.name || '')} style={{ objectFit: 'cover' }} alt="" />
-                    : <span key={ci} className="swatch" style={{ background: c.hex }} title={esc(c.name || '')}></span>
-                ))}
-                <span style={{ fontSize: 11, color: 'var(--text2)' }}>{colours.filter(c => c?.hex).map(c => esc(c.name || '')).filter(Boolean).join(', ')}</span>
+                {colours.filter(c => c?.hex).map((c, ci) => {
+                  const tip = [c.brand, c.brandName, c.name].filter(Boolean).join(' — ');
+                  return c.swatchUrl
+                    ? <img key={ci} className="swatch" src={c.swatchUrl} title={tip || ''} style={{ objectFit: 'cover' }} alt="" />
+                    : <span key={ci} className="swatch" style={{ background: c.hex }} title={tip || ''}></span>;
+                })}
+                <span style={{ fontSize: 11, color: 'var(--text2)' }}>
+                  {colours.filter(c => c?.hex).map(c => [c.brand, c.name].filter(Boolean).join(' ')).filter(Boolean).join(', ')}
+                </span>
               </div>
               <QtyCell partId={p.id} displayed={displayPrinted} total={displayQty} qty={p.qty} />
               <span className={`sp sp-${p.status}`} style={{ cursor: 'pointer' }} title="click to change status" onClick={e => { e.stopPropagation(); openModal('status', { partId: p.id }); }}>{p.status}</span>
@@ -309,7 +326,7 @@ function PartsTable({ parts: ps, openModal }) {
           </div>
         );
       })}
-      <button className="btn" style={{ margin: '10px 0', fontSize: 12 }} onClick={() => openModal('part', { editId: null })}>+ add part</button>
+      <button className="btn" style={{ margin: '10px 0', fontSize: 12 }} onClick={() => openModal('part', { editId: null, defaultItem: item })}>+ add part</button>
     </div>
   );
 }

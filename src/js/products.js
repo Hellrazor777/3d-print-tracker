@@ -88,6 +88,12 @@ function renderProductView() {
     filterBar.appendChild(searchInput);
   }
 
+  // ── Ready to build section (top) ──
+  if (readyItems.length) {
+    const sec = buildSection('ready to build', readyItems, 'var(--green)', true);
+    container.appendChild(sec);
+  }
+
   // ── Printing section ──
   if (printingItems.length) {
     const sec = buildSection('printing', printingItems, 'var(--amber-text)', true);
@@ -97,12 +103,6 @@ function renderProductView() {
   // ── Commenced section ──
   if (commencedItems.length) {
     const sec = buildSection('commenced', commencedItems, 'var(--blue-text)', true);
-    container.appendChild(sec);
-  }
-
-  // ── Ready to build section ──
-  if (readyItems.length) {
-    const sec = buildSection('ready to build', readyItems, 'var(--green)', true);
     container.appendChild(sec);
   }
 

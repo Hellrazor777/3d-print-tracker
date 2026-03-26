@@ -53,6 +53,15 @@
       }
     },
     {
+      "files": ["src/lib/**/*.js"],
+      "env": {
+        "browser": true
+      },
+      "rules": {
+        "no-empty": ["warn", { "allowEmptyCatch": true }]
+      }
+    },
+    {
       "files": ["src/js/**/*.js"],
       "env": {
         "browser": true

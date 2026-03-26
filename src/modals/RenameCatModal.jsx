@@ -17,7 +17,7 @@ export default function RenameCatModal() {
 
   return (
     <div id="rename-cat-modal" style={{ display: '' }}>
-      <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="modal-bg" onClick={e => e.stopPropagation()}>
         <div className="modal" style={{ width: 320 }}>
           <h3>{title}</h3>
           <div className="field">

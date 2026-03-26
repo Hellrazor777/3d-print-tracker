@@ -3,6 +3,50 @@ import { useApp } from '../context/AppContext';
 
 function esc(s) { return String(s || ''); }
 
+/** `hostWithPort` from get-local-ip IPC is IPv4:port (see src/main/ipc/data.js). */
+function parsePhoneEndpoint(hostWithPort) {
+  if (!hostWithPort || typeof hostWithPort !== 'string') return { host: '', port: '', displayUrl: '', isLocalhost: false };
+  const last = hostWithPort.lastIndexOf(':');
+  if (last <= 0) {
+    return {
+      host: hostWithPort,
+      port: '',
+      displayUrl: `http://${hostWithPort}`,
+      isLocalhost: hostWithPort.toLowerCase() === 'localhost',
+    };
+  }
+  const host = hostWithPort.slice(0, last);
+  const port = hostWithPort.slice(last + 1);
+  const displayUrl = `http://${host}:${port}`;
+  const isLocalhost = host.toLowerCase() === 'localhost' || host === '127.0.0.1';
+  return { host, port, displayUrl, isLocalhost };
+}
+
+function PhoneInventoryUrl({ raw }) {
+  const { displayUrl, host, port, isLocalhost } = parsePhoneEndpoint(raw);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: 420 }}>
+      <div style={{ fontSize: 11, color: 'var(--text2)' }}>Open on your phone (same Wi‑Fi as this PC)</div>
+      <div style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--bg2)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '0.5px solid var(--border)' }}>
+        <div><strong>{displayUrl}</strong></div>
+        {host && port && (
+          <div style={{ fontSize: 11, marginTop: 4, opacity: 0.9 }}>
+            host <code style={{ fontSize: 11 }}>{esc(host)}</code>
+            {' · '}
+            port <code style={{ fontSize: 11 }}>{esc(port)}</code>
+          </div>
+        )}
+        {isLocalhost && (
+          <div style={{ fontSize: 11, marginTop: 6, color: 'var(--amber-text)' }}>
+            Use your PC’s LAN address, not localhost, if the phone is another device.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function InventoryView() {
   const { inventory, invExpanded, toggleInvCard, openModal, fetchLocalIP, localIP } = useApp();
 
@@ -10,10 +54,10 @@ export default function InventoryView() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 13, color: 'var(--text2)' }}>{inventory.length} product{inventory.length !== 1 ? 's' : ''} in inventory</div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {localIP
-            ? <span style={{ fontSize: 12, color: 'var(--text2)', background: 'var(--bg2)', padding: '4px 10px', borderRadius: 'var(--radius)', border: '0.5px solid var(--border)' }}>phone: <strong>http://{localIP}</strong></span>
-            : <button className="btn" onClick={fetchLocalIP}>show phone URL</button>
+            ? <PhoneInventoryUrl raw={localIP} />
+            : <button className="btn" onClick={fetchLocalIP}>Show phone URL</button>
           }
           <button className="btn btn-primary" onClick={() => openModal('add-inventory')}>+ Add Product</button>
         </div>

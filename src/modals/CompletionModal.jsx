@@ -8,7 +8,7 @@ export default function CompletionModal() {
 
   return (
     <div id="completion-modal" style={{ display: '' }}>
-      <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="modal-bg" onClick={e => e.stopPropagation()}>
         <div className="modal" style={{ width: 340 }}>
           <h3>all parts printed!</h3>
           <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: '1rem', lineHeight: 1.5 }}>How many completed builds are you adding to inventory? The product will be archived after this.</p>

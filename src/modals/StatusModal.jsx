@@ -22,7 +22,7 @@ export default function StatusModal() {
 
   return (
     <div id="status-modal" style={{ display: '' }}>
-      <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="modal-bg" onClick={e => e.stopPropagation()}>
         <div className="modal" style={{ width: 300 }}>
           <h3>change status — {current.name}</h3>
           {current.status === 'done' && !isSubPart && (

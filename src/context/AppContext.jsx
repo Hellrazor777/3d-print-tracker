@@ -121,16 +121,22 @@ export function AppProvider({ children }) {
     init();
 
     // Listen for mobile inventory updates
+    let cleanupInventoryListener = null;
     if (window.electronAPI?.onInventoryUpdated) {
-      window.electronAPI.onInventoryUpdated(async () => {
+      const onInventoryUpdated = async () => {
         const saved = await loadData();
         if (saved) {
           setParts(saved.parts || []);
           setProducts(saved.products || {});
           setInventory(saved.inventory || []);
         }
-      });
+      };
+      cleanupInventoryListener = window.electronAPI.onInventoryUpdated(onInventoryUpdated);
     }
+
+    return () => {
+      if (typeof cleanupInventoryListener === 'function') cleanupInventoryListener();
+    };
   }, []);
 
   // ── Settings helpers ──
@@ -499,6 +505,24 @@ export function AppProvider({ children }) {
     return Math.max(0, (item.built || 0) - totalOut);
   }, []);
 
+  // Adjusts storage so its total matches invOnHand(item). Difference goes into the last location.
+  const syncStorageLocs = useCallback((item, locs) => {
+    if (!locs.length) return item.storage || {};
+    const onHand = invOnHand(item);
+    const storage = { ...(item.storage || {}) };
+    locs.forEach(l => { if (storage[l] === undefined) storage[l] = 0; });
+    const total = locs.reduce((a, l) => a + (storage[l] || 0), 0);
+    if (total === onHand) return storage;
+    if (locs.length === 1) { storage[locs[0]] = onHand; return storage; }
+    let remaining = onHand;
+    locs.slice(0, -1).forEach(l => {
+      storage[l] = Math.min(storage[l] || 0, remaining);
+      remaining -= storage[l];
+    });
+    storage[locs[locs.length - 1]] = Math.max(0, remaining);
+    return storage;
+  }, [invOnHand]);
+
   const invMigrateStorage = useCallback((item, locs) => {
     if (!item.storage) {
       item.storage = {};
@@ -509,14 +533,18 @@ export function AppProvider({ children }) {
   }, []);
 
   const confirmCompletion = useCallback(async (productName, qty) => {
+    const locs = getStorageLocations();
     let newInventory;
     setInventory(prev => {
       newInventory = [...prev];
       const existing = newInventory.find(i => i.name === productName);
       if (existing) {
         existing.built = (existing.built || 0) + qty;
+        existing.storage = syncStorageLocs(existing, locs);
       } else {
-        newInventory.push({ id: 'inv_' + Date.now(), name: productName, category: productsRef.current[productName]?.category || '', built: qty, location: '', storage: {}, distributions: [], source: 'tracker' });
+        const storage = {};
+        locs.forEach((loc, i) => { storage[loc] = i === locs.length - 1 ? qty : 0; });
+        newInventory.push({ id: 'inv_' + Date.now(), name: productName, category: productsRef.current[productName]?.category || '', built: qty, location: '', storage, distributions: [], source: 'tracker' });
       }
       return newInventory;
     });
@@ -530,7 +558,7 @@ export function AppProvider({ children }) {
     }, 0);
     closeModal();
     setCurrentView('inventory');
-  }, [closeModal]);
+  }, [closeModal, getStorageLocations, syncStorageLocs]);
 
   const confirmQuickAdd = useCallback(async (productName, qty, locations) => {
     let newInventory;
@@ -554,25 +582,34 @@ export function AppProvider({ children }) {
   }, [closeModal]);
 
   const invAdjustBuilt = useCallback(async (id, delta) => {
+    const locs = getStorageLocations();
     let newInventory;
     setInventory(prev => {
       newInventory = prev.map(item => {
         if (item.id !== id) return item;
-        return { ...item, built: Math.max(0, (item.built || 0) + delta) };
+        const updated = { ...item, built: Math.max(0, (item.built || 0) + delta) };
+        updated.storage = syncStorageLocs(updated, locs);
+        return updated;
       });
       return newInventory;
     });
     await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
-  }, []);
+  }, [getStorageLocations, syncStorageLocs]);
 
   const invSetBuilt = useCallback(async (id, val) => {
+    const locs = getStorageLocations();
     let newInventory;
     setInventory(prev => {
-      newInventory = prev.map(item => item.id !== id ? item : { ...item, built: Math.max(0, val) });
+      newInventory = prev.map(item => {
+        if (item.id !== id) return item;
+        const updated = { ...item, built: Math.max(0, val) };
+        updated.storage = syncStorageLocs(updated, locs);
+        return updated;
+      });
       return newInventory;
     });
     await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
-  }, []);
+  }, [getStorageLocations, syncStorageLocs]);
 
   const invAdjustLocation = useCallback(async (id, loc, delta) => {
     const locs = getStorageLocations();
@@ -645,17 +682,20 @@ export function AppProvider({ children }) {
   }, [getStorageLocations]);
 
   const removeDistribution = useCallback(async (id, idx) => {
+    const locs = getStorageLocations();
     let newInventory;
     setInventory(prev => {
       newInventory = prev.map(item => {
         if (item.id !== id) return item;
         const distributions = (item.distributions || []).filter((_, i) => i !== idx);
-        return { ...item, distributions };
+        const updated = { ...item, distributions };
+        updated.storage = syncStorageLocs(updated, locs);
+        return updated;
       });
       return newInventory;
     });
     await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
-  }, []);
+  }, [getStorageLocations, syncStorageLocs]);
 
   const invDeleteItem = useCallback(async (id) => {
     let newInventory;
@@ -851,8 +891,9 @@ export function AppProvider({ children }) {
     if (!window.electronAPI) return;
     const dest = productsRef.current[item]?.imagePath ? productsRef.current[item].imagePath.replace(/[^/\\]*$/, '') : (appSettings.threeMfFolder || '');
     const result = await window.electronAPI.uploadImage(dest, item + '_cover');
-    if (result?.path) {
-      setProducts(prev => ({ ...prev, [item]: { ...prev[item], imagePath: result.path } }));
+    const path = result?.destPath || result?.path;
+    if (path) {
+      setProducts(prev => ({ ...prev, [item]: { ...prev[item], imagePath: path } }));
       setTimeout(async () => {
         await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
       }, 0);
@@ -874,14 +915,18 @@ export function AppProvider({ children }) {
   const uploadProduct3mf = useCallback(async (item) => {
     if (!window.electronAPI) return 0;
     const result = await window.electronAPI.upload3mf(item, appSettings.threeMfFolder);
-    if (result?.files?.length) {
-      setProducts(prev => ({
-        ...prev, [item]: { ...(prev[item] || {}), threeMfFiles: [...(prev[item]?.threeMfFiles || []), ...result.files] },
-      }));
+    if (result?.error) return 0;
+    if (result?.destPath && result.fileName) {
+      setProducts(prev => {
+        const prevFiles = prev[item]?.threeMfFiles || [];
+        const normalized = prevFiles.map(f => (typeof f === 'string' ? f : f?.fileName)).filter(Boolean);
+        const nextFiles = normalized.includes(result.fileName) ? normalized : [...normalized, result.fileName];
+        return { ...prev, [item]: { ...(prev[item] || {}), threeMfFiles: nextFiles } };
+      });
       setTimeout(async () => {
         await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
       }, 0);
-      return result.files.length;
+      return 1;
     }
     return 0;
   }, [appSettings.threeMfFolder]);

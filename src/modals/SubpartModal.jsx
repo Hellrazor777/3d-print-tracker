@@ -14,7 +14,7 @@ export default function SubpartModal() {
 
   return (
     <div id="subpart-modal" style={{ display: '' }}>
-      <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="modal-bg" onClick={e => e.stopPropagation()}>
         <div className="modal" style={{ width: 300 }}>
           <h3>add sub-part</h3>
           <div className="field"><label>sub-part name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. left claw, piece 2" autoFocus onKeyDown={e => { if (e.key === 'Enter') handleSave(); }} /></div>

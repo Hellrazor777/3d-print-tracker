@@ -505,10 +505,13 @@ function getColourRows() {
     return { hex: inputs[0].value, name: inputs[1].value.trim() };
   }).filter(c => c.hex);
 }
-function getItems() { return [...new Set(parts.map(p=>p.item).filter(Boolean))]; }
+function getItems() {
+  const fromParts = parts.map(p => p.item).filter(Boolean);
+  const fromProducts = Object.keys(products);
+  return [...new Set([...fromParts, ...fromProducts])];
+}
 function getCategories() { return [...new Set(Object.values(products).map(p=>p.category).filter(Boolean))]; }
 function isReady(item) { const ps=parts.filter(p=>p.item===item); return ps.length>0&&ps.every(p=>p.status==='done'); }
-
 function setView(v) {
   currentView=v;
   document.getElementById('view-product').style.display=v==='product'?'':'none';

@@ -3,6 +3,18 @@ import { useApp } from '../context/AppContext';
 
 function esc(s) { return String(s || ''); }
 
+function SettingsSection({ id, collapsed, toggleSection, title, children }) {
+  const isOpen = !collapsed.has(id);
+  return (
+    <div className={`settings-section${isOpen ? ' open' : ' collapsed'}`} id={id}>
+      <div className="settings-section-label" onClick={() => toggleSection(id)}>
+        <span className="ssec-chevron">▶</span>{title}
+      </div>
+      <div className="settings-section-content">{children}</div>
+    </div>
+  );
+}
+
 export default function SettingsModal() {
   const {
     closeModal, appSettings, saveAppSettings, isElectron,
@@ -12,7 +24,15 @@ export default function SettingsModal() {
     addOutgoingDest, removeOutgoingDest, moveOutgoingDest,
   } = useApp();
 
-  const [form, setForm] = useState({ ...appSettings });
+  const [form, setForm] = useState({
+    theme: appSettings.theme || 'auto',
+    threeMfFolder: appSettings.threeMfFolder || '',
+    slicer: appSettings.slicer || 'bambu',
+    bambuPath: appSettings.bambuPath || '',
+    orcaPath: appSettings.orcaPath || '',
+    invPopup: appSettings.invPopup !== false,
+    n3dApiKey: appSettings.n3dApiKey || '',
+  });
   const [collapsed, setCollapsed] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('ssec-collapsed') || '[]')); } catch { return new Set(); }
   });
@@ -30,29 +50,19 @@ export default function SettingsModal() {
   };
 
   const handleSave = async () => {
-    await saveAppSettings(form);
+    await saveAppSettings({ ...appSettings, ...form });
     closeModal();
   };
 
-  const cats = getCategoryOrder();
+  const SYSTEM_CATS = ['ready to build', 'printing', 'commenced'];
+  const cats = getCategoryOrder().filter(c => !SYSTEM_CATS.includes(c.toLowerCase()));
   const locs = getStorageLocations();
   const dests = getOutgoingDests();
 
-  const Section = ({ id, title, children }) => {
-    const isOpen = !collapsed.has(id);
-    return (
-      <div className={`settings-section${isOpen ? ' open' : ' collapsed'}`} id={id}>
-        <div className="settings-section-label" onClick={() => toggleSection(id)}>
-          <span className="ssec-chevron">▶</span>{title}
-        </div>
-        <div className="settings-section-content">{children}</div>
-      </div>
-    );
-  };
 
   return (
     <div id="settings-modal" style={{ display: '' }}>
-      <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="modal-bg" onClick={e => e.stopPropagation()}>
         <div className="modal settings-modal">
           <div className="settings-header">
             <span className="settings-title">Settings</span>
@@ -60,7 +70,7 @@ export default function SettingsModal() {
           </div>
           <div className="settings-body">
 
-            <Section id="ssec-appearance" title="Appearance">
+            <SettingsSection collapsed={collapsed} toggleSection={toggleSection} id="ssec-appearance" title="Appearance">
               <div className="field" style={{ marginBottom: 0 }}>
                 <label>Theme</label>
                 <div className="theme-toggle">
@@ -71,9 +81,9 @@ export default function SettingsModal() {
                   ))}
                 </div>
               </div>
-            </Section>
+            </SettingsSection>
 
-            <Section id="ssec-categories" title="Product Categories">
+            <SettingsSection collapsed={collapsed} toggleSection={toggleSection} id="ssec-categories" title="Product Categories">
               {cats.map((cat, idx) => (
                 <div key={cat} className="cat-row">
                   <span className="cat-row-name">{esc(cat)}</span>
@@ -84,13 +94,16 @@ export default function SettingsModal() {
                 </div>
               ))}
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="New category name" style={{ flex: 1 }} onKeyDown={e => { if (e.key === 'Enter' && newCat.trim()) { addCategory(newCat.trim()); setNewCat(''); } }} />
-                <button className="btn btn-primary" onClick={() => { if (newCat.trim()) { addCategory(newCat.trim()); setNewCat(''); } }}>Add</button>
+                <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="New category name" style={{ flex: 1 }} onKeyDown={e => { if (e.key === 'Enter' && newCat.trim() && !SYSTEM_CATS.includes(newCat.trim().toLowerCase())) { addCategory(newCat.trim()); setNewCat(''); } }} />
+                <button className="btn btn-primary" onClick={() => { if (newCat.trim() && !SYSTEM_CATS.includes(newCat.trim().toLowerCase())) { addCategory(newCat.trim()); setNewCat(''); } }}>Add</button>
               </div>
-            </Section>
+              {SYSTEM_CATS.includes(newCat.trim().toLowerCase()) && (
+                <p style={{ fontSize: 11, color: 'var(--amber-text)', marginTop: 4 }}>"{newCat.trim()}" is a system section and can't be used as a category.</p>
+              )}
+            </SettingsSection>
 
             {isElectron && (
-              <Section id="ssec-3mf" title="3MF Files">
+              <SettingsSection collapsed={collapsed} toggleSection={toggleSection} id="ssec-3mf" title="3MF Files">
                 <div className="field" style={{ marginBottom: 0 }}>
                   <label>Root folder</label>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -98,11 +111,11 @@ export default function SettingsModal() {
                     <button className="btn" onClick={async () => { if (window.electronAPI?.pick3mfFolder) { const f = await window.electronAPI.pick3mfFolder(); if (f) setForm(x => ({ ...x, threeMfFolder: f })); } }}>Browse</button>
                   </div>
                 </div>
-              </Section>
+              </SettingsSection>
             )}
 
             {isElectron && (
-              <Section id="ssec-slicer" title="Slicer">
+              <SettingsSection collapsed={collapsed} toggleSection={toggleSection} id="ssec-slicer" title="Slicer">
                 <div className="field">
                   <label>Default slicer</label>
                   <select value={form.slicer || 'bambu'} onChange={e => setForm(f => ({ ...f, slicer: e.target.value }))}>
@@ -118,10 +131,10 @@ export default function SettingsModal() {
                   <label>Orca Slicer path <span className="settings-hint">(leave blank for default)</span></label>
                   <input value={form.orcaPath || ''} onChange={e => setForm(f => ({ ...f, orcaPath: e.target.value }))} placeholder="C:\Program Files\OrcaSlicer\orca-slicer.exe" />
                 </div>
-              </Section>
+              </SettingsSection>
             )}
 
-            <Section id="ssec-inventory" title="Inventory">
+            <SettingsSection collapsed={collapsed} toggleSection={toggleSection} id="ssec-inventory" title="Inventory">
               <div className="field" style={{ marginBottom: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <input type="checkbox" id="s-inv-popup" checked={form.invPopup !== false} onChange={e => setForm(f => ({ ...f, invPopup: e.target.checked }))} style={{ width: 16, height: 16, cursor: 'pointer' }} />
@@ -161,7 +174,7 @@ export default function SettingsModal() {
                   <button className="btn btn-primary" onClick={() => { if (newDest.trim()) { addOutgoingDest(newDest.trim()); setNewDest(''); } }}>Add</button>
                 </div>
               </div>
-            </Section>
+            </SettingsSection>
 
           </div>
           <div className="settings-footer">

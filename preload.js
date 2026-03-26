@@ -7,7 +7,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveCsvDialog:       (content)                   => ipcRenderer.invoke('save-csv-dialog', content),
   getLocalIP:          ()                          => ipcRenderer.invoke('get-local-ip'),
   n3dRequest:          (path, method, body, key)   => ipcRenderer.invoke('n3d-request', { path, method, body, apiKey: key }),
-  onInventoryUpdated:  (cb)                        => ipcRenderer.on('inventory-updated', cb),
+  onInventoryUpdated:  (cb)                        => {
+    ipcRenderer.on('inventory-updated', cb);
+    return () => ipcRenderer.removeListener('inventory-updated', cb);
+  },
   loadSettings:        ()                          => ipcRenderer.invoke('load-settings'),
   saveSettings:        (s)                         => ipcRenderer.invoke('save-settings', s),
   pick3mfFolder:       ()                          => ipcRenderer.invoke('pick-3mf-folder'),

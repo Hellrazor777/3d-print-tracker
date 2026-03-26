@@ -157,7 +157,7 @@ export default function ImportModal() {
 
   return (
     <div id="import-modal" style={{ display: '' }}>
-      <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+      <div className="modal-bg" onClick={e => e.stopPropagation()}>
         <div className="modal" style={{ width: 520 }}>
           <h3>Import CSV</h3>
 
