@@ -178,6 +178,7 @@ export default function SettingsModal() {
 
           </div>
           <div className="settings-footer">
+            <button className="btn" onClick={() => openModal('filament-library')} style={{ marginRight: 'auto' }}>📚 Filament Library</button>
             <button className="btn" onClick={closeModal}>Cancel</button>
             <button className="btn btn-primary" onClick={handleSave}>Save</button>
           </div>

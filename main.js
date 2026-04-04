@@ -16,11 +16,13 @@ const PORT = 3000;
 let localServer = null;
 let mainWin = null;
 let actualPort = PORT;
+let printerHandlers = null;
 
 // Import IPC and server modules
 const registerDataHandlers = require('./src/main/ipc/data');
 const registerFilesHandlers = require('./src/main/ipc/files');
 const registerN3dHandlers = require('./src/main/ipc/n3d');
+const registerPrinterHandlers = require('./src/main/ipc/printers');
 const startLocalServer = require('./src/main/server');
 const dataModule = require('./src/main/ipc/data');
 
@@ -63,6 +65,7 @@ app.whenReady().then(() => {
   registerDataHandlers(ipcMain, DATA_PATH, SETTINGS_PATH, () => actualPort);
   registerFilesHandlers(ipcMain, mainWin, dataModule.loadSettings.bind(null, SETTINGS_PATH));
   registerN3dHandlers(ipcMain);
+  printerHandlers = registerPrinterHandlers(ipcMain, mainWin, dataModule.loadSettings.bind(null, SETTINGS_PATH));
 
   // Start local server — auto-retries on EADDRINUSE, updates actualPort when bound
   localServer = startLocalServer(PORT, DATA_PATH, mainWin, (port) => { actualPort = port; });
@@ -72,5 +75,6 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (localServer) localServer.close();
+  if (printerHandlers) printerHandlers.cleanup();
   if (process.platform !== 'darwin') app.quit();
 });

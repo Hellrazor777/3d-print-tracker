@@ -3,8 +3,19 @@ import { useApp } from '../context/AppContext';
 
 function esc(s) { return String(s || ''); }
 
+const SPECIAL_SECTIONS = ['ready to build', 'printing', 'commenced'];
+
+// Determine which ProductView section an item lands in (mirrors the bucketing in ProductView)
+function getProductSection(item, parts, products, isReady) {
+  const ps = parts.filter(p => p.item === item);
+  if (isReady(item)) return 'ready to build';
+  if (ps.some(p => p.status === 'printing')) return 'printing';
+  if (ps.some(p => p.status === 'done')) return 'commenced';
+  return products[item]?.category || 'uncategorised';
+}
+
 export default function ColourView() {
-  const { parts, colourExpanded, toggleColour, setView, openProducts, toggleProduct } = useApp();
+  const { parts, products, colourExpanded, toggleColour, setView, openProducts, toggleProduct, catExpanded, toggleCat, isReady } = useApp();
   const [search, setSearch] = useState('');
 
   const queuedParts = parts.filter(p => p.status === 'queue');
@@ -38,7 +49,29 @@ export default function ColourView() {
 
   const goToProduct = (item) => {
     if (!openProducts.has(item)) toggleProduct(item);
-    setView('products');
+    // Ensure the section containing this product is expanded so the card exists in the DOM
+    const section = getProductSection(item, parts, products, isReady);
+    if (!SPECIAL_SECTIONS.includes(section)) {
+      // Category sections default to closed — open if not already open
+      const neverSet = !catExpanded.has(section) && !catExpanded.has('__closed__' + section);
+      const isOpen = !neverSet && catExpanded.has(section);
+      if (!isOpen) toggleCat(section, false);
+    } else {
+      // Special sections default to open — open if the user manually closed them
+      const manuallyClosed = catExpanded.has('__closed__' + section);
+      if (manuallyClosed) toggleCat(section, true);
+    }
+    setView('product');
+    // Allow React to finish rendering the view + section + card before scrolling.
+    // 300 ms is enough for even slow renders; we also poll in case it takes slightly longer.
+    const safeId = 'product-card-' + item.replace(/[^a-zA-Z0-9]/g, '_');
+    const deadline = Date.now() + 1500;
+    const tryScroll = () => {
+      const el = document.getElementById(safeId);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+      if (Date.now() < deadline) setTimeout(tryScroll, 60);
+    };
+    setTimeout(tryScroll, 300);
   };
 
   return (

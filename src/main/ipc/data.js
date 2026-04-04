@@ -30,7 +30,13 @@ module.exports = function registerDataHandlers(ipcMain, DATA_PATH, SETTINGS_PATH
   });
 
   ipcMain.handle('save-data', (_, data) => {
-    try { fs.writeFileSync(DATA_PATH, JSON.stringify(data), 'utf8'); return true; }
+    try {
+      // Keep one rolling backup so a bad save is always recoverable
+      const bakPath = DATA_PATH + '.bak';
+      if (fs.existsSync(DATA_PATH)) fs.copyFileSync(DATA_PATH, bakPath);
+      fs.writeFileSync(DATA_PATH, JSON.stringify(data), 'utf8');
+      return true;
+    }
     catch(e) { return false; }
   });
 

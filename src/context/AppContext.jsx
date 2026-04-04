@@ -49,11 +49,15 @@ export function AppProvider({ children }) {
   const [parts, setParts] = useState([]);
   const [products, setProducts] = useState({});
   const [inventory, setInventory] = useState([]);
+  const [filaments, setFilaments] = useState([]);
   const [nextId, setNextId] = useState(1);
   const [appSettings, setAppSettings] = useState({
     threeMfFolder: '', slicer: 'bambu', bambuPath: '', orcaPath: '',
     theme: 'auto', invPopup: true, n3dApiKey: '',
+    bambuAuth: null, printers: [],
   });
+  const [printerStatus, setPrinterStatus] = useState({});   // serial/id → state
+  const [bambuConn, setBambuConn] = useState({ connected: false, connecting: false });
   const [currentView, setCurrentView] = useState('product');
   const [sliceFilter, setSliceFilter] = useState('all');
   const [productSearch, setProductSearch] = useState('');
@@ -73,10 +77,12 @@ export function AppProvider({ children }) {
   const productsRef = useRef(products);
   const inventoryRef = useRef(inventory);
   const catExpandedRef = useRef(catExpanded);
+  const filamentsRef = useRef(filaments);
   useEffect(() => { partsRef.current = parts; }, [parts]);
   useEffect(() => { productsRef.current = products; }, [products]);
   useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
   useEffect(() => { catExpandedRef.current = catExpanded; }, [catExpanded]);
+  useEffect(() => { filamentsRef.current = filaments; }, [filaments]);
 
   // ── Theme ──
   function applyTheme(theme) {
@@ -106,6 +112,7 @@ export function AppProvider({ children }) {
       setParts(initParts);
       setProducts(initProducts);
       setInventory(initInventory);
+      setFilaments(saved?.filaments || []);
       setNextId(initNextId);
       // Open all products by default
       const items = [...new Set(initParts.map(p => p.item).filter(Boolean))];
@@ -134,8 +141,32 @@ export function AppProvider({ children }) {
       cleanupInventoryListener = window.electronAPI.onInventoryUpdated(onInventoryUpdated);
     }
 
+    // Listen for printer status updates from main process
+    let cleanupPrinterUpdate = null;
+    let cleanupBambuConn = null;
+    let cleanupBambuToken = null;
+    if (window.electronAPI?.onPrinterUpdate) {
+      cleanupPrinterUpdate = window.electronAPI.onPrinterUpdate((_, { serial, id, state }) => {
+        const key = serial || id;
+        if (key) setPrinterStatus(prev => ({ ...prev, [key]: state }));
+      });
+      cleanupBambuConn = window.electronAPI.onBambuConn((_, status) => {
+        setBambuConn(status || { connected: false });
+      });
+      cleanupBambuToken = window.electronAPI.onBambuTokenRefreshed((_, { auth }) => {
+        setAppSettings(prev => {
+          const next = { ...prev, bambuAuth: { ...prev.bambuAuth, ...auth } };
+          saveSettingsStorage(next);
+          return next;
+        });
+      });
+    }
+
     return () => {
       if (typeof cleanupInventoryListener === 'function') cleanupInventoryListener();
+      if (typeof cleanupPrinterUpdate === 'function') cleanupPrinterUpdate();
+      if (typeof cleanupBambuConn === 'function') cleanupBambuConn();
+      if (typeof cleanupBambuToken === 'function') cleanupBambuToken();
     };
   }, []);
 
@@ -239,7 +270,7 @@ export function AppProvider({ children }) {
       });
       return newParts;
     });
-    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   const reprint = useCallback(async (id) => {
@@ -253,13 +284,13 @@ export function AppProvider({ children }) {
       newParts = prev.map(x => x.id === id ? reprintedP : x).concat(newEntry);
       return newParts;
     });
-    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, [nextId]);
 
   const deletePart = useCallback(async (id) => {
     let newParts;
     setParts(prev => { newParts = prev.filter(p => p.id !== id); return newParts; });
-    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   const saveCard = useCallback(async (formData, editId) => {
@@ -291,7 +322,7 @@ export function AppProvider({ children }) {
       return newProducts;
     });
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
     closeModal();
   }, [nextId, appSettings.threeMfFolder, closeModal]);
@@ -327,7 +358,7 @@ export function AppProvider({ children }) {
       }
     }
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, []);
 
@@ -349,7 +380,7 @@ export function AppProvider({ children }) {
       return newParts;
     });
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, []);
 
@@ -371,7 +402,7 @@ export function AppProvider({ children }) {
       });
       return newParts;
     });
-    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   const addSubPart = useCallback(async (partId, name, qty) => {
@@ -386,7 +417,7 @@ export function AppProvider({ children }) {
       });
       return newParts;
     });
-    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   const deleteSubPart = useCallback(async (partId, subIdx) => {
@@ -399,11 +430,11 @@ export function AppProvider({ children }) {
       });
       return newParts;
     });
-    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   // ── Product CRUD ──
-  const saveManageProduct = useCallback(async ({ oldName, newName, category, description, shiny, n3dUrl, designer, source }) => {
+  const saveManageProduct = useCallback(async ({ oldName, newName, category, description, shiny, n3dUrl, designer, source, imagePath, partsBoxEnabled, partsBox }) => {
     let newParts, newProducts;
     setParts(prev => {
       newParts = prev.map(p => p.item === oldName ? { ...p, item: newName } : p);
@@ -413,7 +444,7 @@ export function AppProvider({ children }) {
       const oldMeta = prev[oldName] || {};
       newProducts = { ...prev };
       delete newProducts[oldName];
-      newProducts[newName] = { ...oldMeta, category, description, shiny, n3dUrl: n3dUrl || oldMeta.n3dUrl || '', designer, source };
+      newProducts[newName] = { ...oldMeta, category, description, shiny, n3dUrl: n3dUrl || oldMeta.n3dUrl || '', designer, source, imagePath: imagePath !== undefined ? imagePath : (oldMeta.imagePath || ''), partsBoxEnabled: !!partsBoxEnabled, partsBox: partsBoxEnabled ? (partsBox || '') : '' };
       return newProducts;
     });
     setOpenProducts(prev => {
@@ -422,7 +453,7 @@ export function AppProvider({ children }) {
       return next;
     });
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
     closeModal();
   }, [closeModal]);
@@ -432,7 +463,7 @@ export function AppProvider({ children }) {
     setParts(prev => { newParts = prev.filter(p => p.item !== name); return newParts; });
     setProducts(prev => { newProducts = { ...prev }; delete newProducts[name]; return newProducts; });
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
     closeModal();
   }, [closeModal]);
@@ -443,7 +474,7 @@ export function AppProvider({ children }) {
       newProducts = { ...prev, [name]: { ...(prev[name] || {}), archived: true } };
       return newProducts;
     });
-    await saveData({ parts: partsRef.current, products: newProducts, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: newProducts, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   const unarchiveProduct = useCallback(async (name) => {
@@ -452,7 +483,7 @@ export function AppProvider({ children }) {
       newProducts = { ...prev, [name]: { ...(prev[name] || {}), archived: false } };
       return newProducts;
     });
-    await saveData({ parts: partsRef.current, products: newProducts, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: newProducts, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   const restartProduct = useCallback(async (name) => {
@@ -471,7 +502,7 @@ export function AppProvider({ children }) {
     });
     setCurrentView('product');
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, []);
 
@@ -483,7 +514,7 @@ export function AppProvider({ children }) {
     });
     setOpenProducts(prev => { const next = new Set(prev); next.add(name); return next; });
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
     closeModal();
   }, [closeModal]);
@@ -495,7 +526,7 @@ export function AppProvider({ children }) {
       return newProducts;
     });
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, []);
 
@@ -554,7 +585,7 @@ export function AppProvider({ children }) {
       return newProducts;
     });
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
     closeModal();
     setCurrentView('inventory');
@@ -577,7 +608,7 @@ export function AppProvider({ children }) {
       }
       return newInventory;
     });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     closeModal();
   }, [closeModal]);
 
@@ -593,7 +624,7 @@ export function AppProvider({ children }) {
       });
       return newInventory;
     });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, [getStorageLocations, syncStorageLocs]);
 
   const invSetBuilt = useCallback(async (id, val) => {
@@ -608,7 +639,7 @@ export function AppProvider({ children }) {
       });
       return newInventory;
     });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, [getStorageLocations, syncStorageLocs]);
 
   const invAdjustLocation = useCallback(async (id, loc, delta) => {
@@ -627,7 +658,7 @@ export function AppProvider({ children }) {
       });
       return newInventory;
     });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, [getStorageLocations, invOnHand]);
 
   const invSetLocation = useCallback(async (id, loc, val) => {
@@ -646,7 +677,7 @@ export function AppProvider({ children }) {
       });
       return newInventory;
     });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, [getStorageLocations, invOnHand]);
 
   const invSetLabel = useCallback(async (id, label) => {
@@ -655,7 +686,7 @@ export function AppProvider({ children }) {
       newInventory = prev.map(item => item.id !== id ? item : { ...item, location: label });
       return newInventory;
     });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   const invLogDist = useCallback(async (id, dest, qty, note) => {
@@ -678,7 +709,7 @@ export function AppProvider({ children }) {
       });
       return newInventory;
     });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, [getStorageLocations]);
 
   const removeDistribution = useCallback(async (id, idx) => {
@@ -694,14 +725,14 @@ export function AppProvider({ children }) {
       });
       return newInventory;
     });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, [getStorageLocations, syncStorageLocs]);
 
   const invDeleteItem = useCallback(async (id) => {
     let newInventory;
     setInventory(prev => { newInventory = prev.filter(i => i.id !== id); return newInventory; });
     setInvExpanded(prev => { const next = new Set(prev); next.delete(id); return next; });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   const addInventoryManual = useCallback(async (name, qty, cat) => {
@@ -713,7 +744,7 @@ export function AppProvider({ children }) {
       newInventory = [...prev, { id: 'inv_' + Date.now(), name, category: cat, built: qty, location: '', storage, distributions: [], source: 'manual' }];
       return newInventory;
     });
-    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: newInventory, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     closeModal();
   }, [getStorageLocations, closeModal]);
 
@@ -722,6 +753,23 @@ export function AppProvider({ children }) {
     setAppSettings(newSettings);
     applyTheme(newSettings.theme || 'auto');
     await saveSettingsStorage(newSettings);
+  }, []);
+
+  // ── Printer helpers ──
+  const saveBambuAuth = useCallback(async (auth) => {
+    setAppSettings(prev => {
+      const next = { ...prev, bambuAuth: auth };
+      saveSettingsStorage(next);
+      return next;
+    });
+  }, []);
+
+  const saveSnapmakerPrinters = useCallback(async (printers) => {
+    setAppSettings(prev => {
+      const next = { ...prev, printers };
+      saveSettingsStorage(next);
+      return next;
+    });
   }, []);
 
   const addCategory = useCallback(async (name) => {
@@ -748,7 +796,7 @@ export function AppProvider({ children }) {
     setAppSettings(newSettings);
     await saveSettingsStorage(newSettings);
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, [appSettings]);
 
@@ -766,7 +814,7 @@ export function AppProvider({ children }) {
     setAppSettings(newSettings);
     await saveSettingsStorage(newSettings);
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, [appSettings]);
 
@@ -799,7 +847,7 @@ export function AppProvider({ children }) {
     setAppSettings(newSettings);
     await saveSettingsStorage(newSettings);
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, [appSettings, getStorageLocations]);
 
@@ -818,7 +866,7 @@ export function AppProvider({ children }) {
     setAppSettings(newSettings);
     await saveSettingsStorage(newSettings);
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, [appSettings, getStorageLocations]);
 
@@ -837,7 +885,7 @@ export function AppProvider({ children }) {
     setAppSettings(newSettings);
     await saveSettingsStorage(newSettings);
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, [appSettings, getStorageLocations]);
 
@@ -889,13 +937,20 @@ export function AppProvider({ children }) {
   // ── Electron-only file ops ──
   const uploadProductImage = useCallback(async (item) => {
     if (!window.electronAPI) return;
-    const dest = productsRef.current[item]?.imagePath ? productsRef.current[item].imagePath.replace(/[^/\\]*$/, '') : (appSettings.threeMfFolder || '');
+    let dest;
+    if (productsRef.current[item]?.imagePath) {
+      dest = productsRef.current[item].imagePath.replace(/[^/\\]*$/, '');
+    } else if (appSettings.threeMfFolder) {
+      dest = await window.electronAPI.getProductFolder(item, appSettings.threeMfFolder) || appSettings.threeMfFolder;
+    } else {
+      dest = '';
+    }
     const result = await window.electronAPI.uploadImage(dest, item + '_cover');
     const path = result?.destPath || result?.path;
     if (path) {
       setProducts(prev => ({ ...prev, [item]: { ...prev[item], imagePath: path } }));
       setTimeout(async () => {
-        await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+        await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
       }, 0);
     }
   }, [appSettings.threeMfFolder]);
@@ -924,7 +979,7 @@ export function AppProvider({ children }) {
         return { ...prev, [item]: { ...(prev[item] || {}), threeMfFiles: nextFiles } };
       });
       setTimeout(async () => {
-        await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+        await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
       }, 0);
       return 1;
     }
@@ -935,8 +990,33 @@ export function AppProvider({ children }) {
   const setProductImagePath = useCallback(async (item, imagePath) => {
     setProducts(prev => ({ ...prev, [item]: { ...prev[item], imagePath } }));
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
+  }, []);
+
+  // ── Filament library CRUD ──
+  const saveFilaments = useCallback(async (newFilaments) => {
+    setFilaments(newFilaments);
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: newFilaments, expandedCats: [...catExpandedRef.current] });
+  }, []);
+
+  const addFilament = useCallback(async (f) => {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const newF = [...filamentsRef.current, { ...f, id }];
+    setFilaments(newF);
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: newF, expandedCats: [...catExpandedRef.current] });
+  }, []);
+
+  const updateFilament = useCallback(async (id, updates) => {
+    const newF = filamentsRef.current.map(x => x.id === id ? { ...x, ...updates } : x);
+    setFilaments(newF);
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: newF, expandedCats: [...catExpandedRef.current] });
+  }, []);
+
+  const deleteFilament = useCallback(async (id) => {
+    const newF = filamentsRef.current.filter(x => x.id !== id);
+    setFilaments(newF);
+    await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: newF, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   const openExternalUrl = useCallback((url) => {
@@ -957,7 +1037,7 @@ export function AppProvider({ children }) {
     setParts(prev => { finalParts = [...prev, ...newParts]; return finalParts; });
     setProducts(prev => { finalProducts = { ...prev, ...newProducts }; return finalProducts; });
     setTimeout(async () => {
-      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+      await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
   }, []);
 
@@ -968,7 +1048,7 @@ export function AppProvider({ children }) {
       newParts = prev.map(p => p.id !== id ? p : { ...p, qty, printed: Math.min(p.printed, qty) });
       return newParts;
     });
-    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, expandedCats: [...catExpandedRef.current] });
+    await saveData({ parts: newParts, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
   }, []);
 
   // ── Export CSV ──
@@ -996,10 +1076,11 @@ export function AppProvider({ children }) {
 
   const value = {
     // State
-    parts, products, inventory, nextId, appSettings, isElectron,
+    parts, products, inventory, filaments, nextId, appSettings, isElectron,
     currentView, sliceFilter, setSliceFilter, productSearch, setProductSearch,
     openProducts, catExpanded, colourExpanded, invExpanded, invSectionCollapsed,
     invLogQty, setInvLogQty, invLogDest, setInvLogDest, localIP, modal, loaded,
+    printerStatus, bambuConn,
     // Helpers
     getCategoryOrder, getStorageLocations, getOutgoingDests, getItems, isReady, productHas3mf, invOnHand, invMigrateStorage,
     // UI
@@ -1018,6 +1099,10 @@ export function AppProvider({ children }) {
     uploadProductImage, openProductFolder, openProductInSlicer, uploadProduct3mf, openExternalUrl, setProductImagePath,
     // Import / Export
     importData, exportData, updatePartQty,
+    // Filament library
+    saveFilaments, addFilament, updateFilament, deleteFilament,
+    // Printers
+    saveBambuAuth, saveSnapmakerPrinters,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

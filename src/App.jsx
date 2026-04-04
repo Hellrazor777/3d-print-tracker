@@ -6,6 +6,7 @@ import ProductView from './views/ProductView';
 import ArchiveView from './views/ArchiveView';
 import ColourView from './views/ColourView';
 import InventoryView from './views/InventoryView';
+import PrintersView from './views/PrintersView';
 import PartModal from './modals/PartModal';
 import AddProductModal from './modals/AddProductModal';
 import ManageProductModal from './modals/ManageProductModal';
@@ -19,6 +20,8 @@ import ImportModal from './modals/ImportModal';
 import ConflictModal from './modals/ConflictModal';
 import AddInventoryModal from './modals/AddInventoryModal';
 import RenameCatModal from './modals/RenameCatModal';
+import FilamentLibraryModal from './modals/FilamentLibraryModal';
+import PartsBoxCheckModal from './modals/PartsBoxCheckModal';
 
 export default function App() {
   const { currentView, loaded, modal } = useApp();
@@ -37,6 +40,7 @@ export default function App() {
         {currentView === 'archive' && <ArchiveView />}
         {currentView === 'colours' && <ColourView />}
         {currentView === 'inventory' && <InventoryView />}
+        {currentView === 'printers' && <PrintersView />}
       </div>
 
       {/* Modals */}
@@ -53,6 +57,8 @@ export default function App() {
       {modal?.type === 'conflict' && <ConflictModal />}
       {modal?.type === 'add-inventory' && <AddInventoryModal />}
       {modal?.type === 'rename-cat' && <RenameCatModal />}
+      {modal?.type === 'filament-library' && <FilamentLibraryModal />}
+      {modal?.type === 'parts-box-check' && <PartsBoxCheckModal />}
 
       <BackToTop />
     </>

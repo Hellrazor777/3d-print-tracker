@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
-const { dialog, shell } = require('electron');
+const { dialog, shell, app } = require('electron');
 const { execFile } = require('child_process');
 
 function downloadImageToPath(url, destPath, redirectCount = 0) {
@@ -169,9 +169,10 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
     if (result.canceled || !result.filePaths.length) return null;
     const srcPath = result.filePaths[0];
     const ext = path.extname(srcPath);
-    const dest = path.join(destFolder, (fileName || 'cover') + ext);
+    const resolvedFolder = destFolder || app.getPath('userData');
+    const dest = path.join(resolvedFolder, (fileName || 'cover') + ext);
     try {
-      if (!fs.existsSync(destFolder)) fs.mkdirSync(destFolder, { recursive: true });
+      if (!fs.existsSync(resolvedFolder)) fs.mkdirSync(resolvedFolder, { recursive: true });
       fs.copyFileSync(srcPath, dest);
       return { ok: true, destPath: dest };
     } catch(e) { return { ok: false, error: e.message }; }

@@ -11,6 +11,7 @@ export default function TopBar() {
         <button id="vb-archive"   className={`view-btn${currentView === 'archive'   ? ' active' : ''}`} onClick={() => setView('archive')}>Archive</button>
         <button id="vb-colours"   className={`view-btn${currentView === 'colours'   ? ' active' : ''}`} onClick={() => setView('colours')}>Colour</button>
         <button id="vb-inventory" className={`view-btn${currentView === 'inventory' ? ' active' : ''}`} onClick={() => setView('inventory')}>Inventory</button>
+        <button id="vb-printers" className={`view-btn${currentView === 'printers' ? ' active' : ''}`} onClick={() => setView('printers')}>Printers</button>
       </div>
       <button className="btn" onClick={() => openModal('settings')} title="settings">⚙ Settings</button>
       <button className="btn btn-n3d" onClick={() => openModal('n3d')}>N3D Browse</button>

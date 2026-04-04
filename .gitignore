@@ -10,6 +10,11 @@ dist-web/
 
 # App data (user data, not source)
 *.json.bak
+data.json
+settings.json
+
+# Claude session/memory data
+.claude/
 
 # OS files
 .DS_Store

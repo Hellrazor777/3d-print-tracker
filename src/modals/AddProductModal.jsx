@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useApp, localFileUrl } from '../context/AppContext';
 
 export default function AddProductModal() {
-  const { closeModal, saveAddProduct, getCategoryOrder, isElectron, products } = useApp();
+  const { closeModal, saveAddProduct, getCategoryOrder, isElectron, products, appSettings } = useApp();
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
@@ -30,9 +30,13 @@ export default function AddProductModal() {
 
   const handleUploadImage = async () => {
     if (!window.electronAPI) return;
-    const result = await window.electronAPI.uploadImage('', name + '_cover');
-    const path = result?.destPath || result?.path;
-    if (path) setImagePath(path);
+    let destFolder = '';
+    if (appSettings.threeMfFolder && name.trim()) {
+      destFolder = await window.electronAPI.getProductFolder(name.trim(), appSettings.threeMfFolder) || '';
+    }
+    const result = await window.electronAPI.uploadImage(destFolder, name.trim() + '_cover');
+    const filePath = result?.destPath || result?.path;
+    if (filePath) setImagePath(filePath);
   };
 
   return (

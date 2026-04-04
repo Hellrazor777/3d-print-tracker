@@ -187,7 +187,7 @@ function ProductCard({ item, parts, products, isOpen, isReady, toggleProduct, ap
   }, [imgOpen]);
 
   return (
-    <div className={`product-card${isReady ? ' ready' : ''}`}>
+    <div id={`product-card-${item.replace(/[^a-zA-Z0-9]/g, '_')}`} className={`product-card${isReady ? ' ready' : ''}`}>
       {imgOpen && localFileUrl(iconPath) && (
         <div
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}
@@ -234,6 +234,11 @@ function ProductCard({ item, parts, products, isOpen, isReady, toggleProduct, ap
           </span>
         )}
         {products[item]?.shiny && <span className="badge-shiny">✨ shiny</span>}
+        {products[item]?.partsBoxEnabled && (
+          <span className="badge-shiny" style={{ background: 'var(--bg2)', color: 'var(--text2)', borderColor: 'var(--border2)' }} title="has a parts box">
+            📦{products[item].partsBox ? ` #${products[item].partsBox}` : ' parts box'}
+          </span>
+        )}
 
         {ps.length === 0 ? (
           <span style={{ fontSize: 12, color: 'var(--text2)', fontStyle: 'italic' }}>no parts yet — expand to add one</span>
