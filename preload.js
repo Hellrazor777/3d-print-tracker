@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getProductFolder:    (productName, rootFolder)   => ipcRenderer.invoke('get-product-folder', { productName, rootFolder }),
   createProductFolder: (productName, rootFolder)   => ipcRenderer.invoke('create-product-folder', { productName, rootFolder }),
   downloadImage:       (url, destFolder, fileName) => ipcRenderer.invoke('download-image', { url, destFolder, fileName }),
+  downloadN3dFiles:    (slug, profiles, destFolder, authToken0, authToken1) => ipcRenderer.invoke('download-3mf-n3d', { slug, profiles, destFolder, authToken0, authToken1 }),
   uploadImage:         (destFolder, fileName)      => ipcRenderer.invoke('upload-image', { destFolder, fileName }),
   openExternal:        (url)                         => ipcRenderer.invoke('open-external', url),
   getBambuVersion:     (exePath)                     => ipcRenderer.invoke('get-bambu-version', exePath),
