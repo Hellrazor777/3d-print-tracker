@@ -162,10 +162,13 @@ function httpsReq(method, url, body, headers = {}) {
 function httpReq(method, url, body, token) {
   return new Promise((resolve, reject) => {
     const u = new URL(url); const data = body ? JSON.stringify(body) : null;
-    const path = u.pathname + (token && method === 'GET' ? `?token=${encodeURIComponent(token)}` : '');
+    const path = u.pathname + (u.search || '');
     const req = http.request({
-      hostname: u.hostname, port: parseInt(u.port) || 8080, path, method, timeout: 6000,
-      headers: { ...(data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}) },
+      hostname: u.hostname, port: parseInt(u.port) || 7125, path, method, timeout: 6000,
+      headers: {
+        ...(data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}),
+        ...(token ? { 'X-Api-Key': token } : {}),
+      },
     }, res => {
       let s = ''; res.on('data', c => s += c);
       res.on('end', () => { try { resolve({ status: res.statusCode, data: JSON.parse(s) }); } catch { resolve({ status: res.statusCode, data: s }); } });
@@ -279,6 +282,7 @@ function parseBambuMsg(serial, payload) {
   if (s.wifi_signal   !== undefined) patch.wifi           = s.wifi_signal;
   if (s.spd_lvl       !== undefined) patch.spd            = s.spd_lvl;
   if (s.ams           !== undefined) patch.ams            = s.ams;
+  if (s.vt_tray       !== undefined) patch.vt_tray        = s.vt_tray;
   if (s.print_error   !== undefined) patch.error          = s.print_error;
   // Only meaningful if we got at least one real field beyond serial+ts
   return Object.keys(patch).length > 2 ? patch : null;
@@ -539,22 +543,78 @@ function disconnectBambuLan() {
   send('bambu-lan-conn', { connected: false });
 }
 
-// ─── Snapmaker HTTP ───────────────────────────────────────────────────────────
+// ─── Moonraker HTTP (Snapmaker via Moonraker API) ─────────────────────────────
+// Endpoint: GET http://<ip>:7125/printer/objects/query?...
+// Auth:     X-Api-Key header (optional — the device config uses trusted_clients
+//           covering all LAN ranges, so no key is needed for local connections)
+// mDNS:    printer is also reachable as lava.local (zeroconf mdns_hostname)
+
+const MOONRAKER_STATE_MAP = { printing: 'RUNNING', standby: 'IDLE', paused: 'PAUSE', error: 'FAILED', complete: 'FINISH' };
+
+// Objects to query on each poll — covers the U1's 4-head tool-changer layout
+const MOONRAKER_QUERY = [
+  'print_stats',
+  'virtual_sdcard',
+  'toolhead',
+  'extruder', 'extruder1', 'extruder2', 'extruder3',
+  'heater_bed',
+  'temperature_sensor%20cavity',       // enclosure temperature
+  'filament_motion_sensor%20e0_filament',
+  'filament_motion_sensor%20e1_filament',
+  'filament_motion_sensor%20e2_filament',
+  'filament_motion_sensor%20e3_filament',
+].join('&');
 
 function parseSnapState(id, name, d) {
-  const t = d.temperature || {};
-  const n = t.nozzle || t.extruder || t.t || {};
-  const b = t.bed || t.b || {};
+  // Moonraker wraps its response: { result: { status: { ... } } }
+  const s   = (d.result && d.result.status) ? d.result.status : {};
+  const ps  = s.print_stats    || {};
+  const bed = s.heater_bed     || {};
+  const vsd = s.virtual_sdcard || {};
+  const th  = s.toolhead       || {};
+
+  const rawState   = ps.state || 'standby';
+  const progress   = vsd.progress || 0;   // 0.0–1.0
+  const printedSec = ps.print_duration || 0;
+  const remainSec  = progress > 0 ? Math.max(0, (printedSec / progress) - printedSec) : 0;
+
+  // All 4 extruder heads (U1 is a tool-changer with up to 4 active heads)
+  const extruderNames = ['extruder', 'extruder1', 'extruder2', 'extruder3'];
+  const extruders = extruderNames.map((n, i) => {
+    const e = s[n];
+    if (!e) return null;
+    const filamentKey = `filament_motion_sensor e${i}_filament`;
+    const filSensor   = s[filamentKey] || {};
+    return {
+      temp:             parseFloat(e.temperature || 0),
+      target:           parseFloat(e.target      || 0),
+      filament_loaded:  filSensor.filament_detected ?? null,
+    };
+  });
+
+  // Determine the active extruder for backward-compat nozzle_temp field
+  const activeExtName = th.active_extruder || 'extruder';
+  const activeIdx     = extruderNames.indexOf(activeExtName);
+  const activeExt     = extruders[activeIdx >= 0 ? activeIdx : 0] || extruders[0] || {};
+
+  // Enclosure/cavity temperature
+  const cavityObj  = s['temperature_sensor cavity'] || s['temperature_sensor%20cavity'] || {};
+  const cavity_temp = cavityObj.temperature != null ? parseFloat(cavityObj.temperature) : null;
+
   return {
     id, name,
-    status: d.status || d.machineStatus || 'UNKNOWN',
-    progress: d.progress ?? d.printProgress ?? 0,
-    remaining_min: Math.round((d.remainingTime ?? 0) / 60),
-    file: d.fileName || d.gcodeName || d.subtaskName || '',
-    nozzle_temp: parseFloat(n.current ?? n.now ?? n.value ?? 0),
-    nozzle_target: parseFloat(n.target ?? 0),
-    bed_temp: parseFloat(b.current ?? b.now ?? b.value ?? 0),
-    bed_target: parseFloat(b.target ?? 0),
+    status:        MOONRAKER_STATE_MAP[rawState] || 'UNKNOWN',
+    progress:      Math.round(progress * 100),
+    remaining_min: Math.round(remainSec / 60),
+    file:          ps.filename || '',
+    // Primary nozzle (backward-compat with Bambu card rendering)
+    nozzle_temp:   activeExt.temp   || 0,
+    nozzle_target: activeExt.target || 0,
+    bed_temp:      parseFloat(bed.temperature || 0),
+    bed_target:    parseFloat(bed.target      || 0),
+    // Extended U1 fields
+    extruders,
+    cavity_temp,
     ts: Date.now(),
   };
 }
@@ -564,7 +624,7 @@ function startSnapPoll(printer) {
   stopSnapPoll(id);
   const poll = async () => {
     try {
-      const r = await httpReq('GET', `http://${ip}:8080/api/v1/status`, null, token);
+      const r = await httpReq('GET', `http://${ip}:7125/printer/objects/query?${MOONRAKER_QUERY}`, null, token);
       if (r.status === 200 && r.data && typeof r.data === 'object') {
         const state = parseSnapState(id, name, r.data);
         printerStates[id] = state;
