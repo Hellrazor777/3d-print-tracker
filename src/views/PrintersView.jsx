@@ -3,6 +3,13 @@ import { useApp } from '../context/AppContext';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+// Format a Bambu HMS error object { attr, code } into the standard HMS_XXXX_XXXX_XXXX_XXXX string
+function fmtHmsCode(h) {
+  const a = ((h.attr >>> 0) & 0xFFFFFFFF).toString(16).padStart(8, '0').toUpperCase();
+  const c = ((h.code >>> 0) & 0xFFFFFFFF).toString(16).padStart(8, '0').toUpperCase();
+  return `HMS_${a.slice(0, 4)}_${a.slice(4)}_${c.slice(0, 4)}_${c.slice(4)}`;
+}
+
 function fmtTime(minutes) {
   if (!minutes || minutes <= 0) return '—';
   const h = Math.floor(minutes / 60), m = minutes % 60;
@@ -823,6 +830,18 @@ function PrinterCard({ device, state, onRefresh, storedIp, storedCode, onSaveCon
           </div>
         ) : (
           <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>Idle</div>
+        )}
+
+        {/* HMS errors */}
+        {state?.hms && state.hms.length > 0 && (
+          <div style={{ marginBottom: 8, padding: '8px 10px', background: 'rgba(239,68,68,.1)', border: '0.5px solid rgba(239,68,68,.35)', borderRadius: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--red-text, #ef4444)', marginBottom: 4 }}>⚠ HMS Error{state.hms.length > 1 ? 's' : ''}</div>
+            {state.hms.map((h, i) => (
+              <div key={i} style={{ fontSize: 11, color: 'var(--red-text, #ef4444)', fontFamily: 'monospace' }}>
+                {fmtHmsCode(h)}
+              </div>
+            ))}
+          </div>
         )}
 
         {state && !isOffline && (

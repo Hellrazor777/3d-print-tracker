@@ -66,4 +66,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('bambu-token-refreshed', cb);
     return () => ipcRenderer.removeListener('bambu-token-refreshed', cb);
   },
+  // Pop-out windows
+  openPrintersPopout: () => ipcRenderer.invoke('open-printers-popout'),
 });

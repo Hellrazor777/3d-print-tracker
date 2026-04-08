@@ -23,11 +23,26 @@ import RenameCatModal from './modals/RenameCatModal';
 import FilamentLibraryModal from './modals/FilamentLibraryModal';
 import PartsBoxCheckModal from './modals/PartsBoxCheckModal';
 
+// Detect if this window was opened as a pop-out for a specific view
+const popoutView = new URLSearchParams(window.location.search).get('popout');
+
 export default function App() {
   const { currentView, loaded, modal } = useApp();
 
   if (!loaded) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text2)', fontSize: 14 }}>loading…</div>;
+  }
+
+  // Pop-out mode: full-window view with just a slim title bar, no nav or stats
+  if (popoutView === 'printers') {
+    return (
+      <>
+        <div className="titlebar"><span className="titlebar-title">Printers</span></div>
+        <div className="main">
+          <PrintersView />
+        </div>
+      </>
+    );
   }
 
   return (

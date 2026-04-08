@@ -59,6 +59,7 @@ export function AppProvider({ children }) {
   const [printerStatus, setPrinterStatus] = useState({});   // serial/id → state
   const [bambuConn, setBambuConn] = useState({ connected: false, connecting: false });
   const [currentView, setCurrentView] = useState('product');
+  const [lastMovedProduct, setLastMovedProduct] = useState(null); // product name that just changed section
   const [sliceFilter, setSliceFilter] = useState('all');
   const [productSearch, setProductSearch] = useState('');
   const [openProducts, setOpenProducts] = useState(new Set());
@@ -328,6 +329,10 @@ export function AppProvider({ children }) {
   }, [nextId, appSettings.threeMfFolder, closeModal]);
 
   const setPartStatus = useCallback(async (partId, newStatus) => {
+    // Record the product this part belongs to so ProductView can scroll to it after re-render
+    const movedPart = partsRef.current.find(p => p.id === partId);
+    if (movedPart?.item) setLastMovedProduct(movedPart.item);
+
     let newParts, newProducts;
     setParts(prev => {
       newParts = prev.map(p => {
@@ -588,7 +593,6 @@ export function AppProvider({ children }) {
       await saveData({ parts: partsRef.current, products: productsRef.current, inventory: inventoryRef.current, filaments: filamentsRef.current, expandedCats: [...catExpandedRef.current] });
     }, 0);
     closeModal();
-    setCurrentView('inventory');
   }, [closeModal, getStorageLocations, syncStorageLocs]);
 
   const confirmQuickAdd = useCallback(async (productName, qty, locations) => {
@@ -1080,7 +1084,7 @@ export function AppProvider({ children }) {
     currentView, sliceFilter, setSliceFilter, productSearch, setProductSearch,
     openProducts, catExpanded, colourExpanded, invExpanded, invSectionCollapsed,
     invLogQty, setInvLogQty, invLogDest, setInvLogDest, localIP, modal, loaded,
-    printerStatus, bambuConn,
+    printerStatus, bambuConn, lastMovedProduct, setLastMovedProduct,
     // Helpers
     getCategoryOrder, getStorageLocations, getOutgoingDests, getItems, isReady, productHas3mf, invOnHand, invMigrateStorage,
     // UI
