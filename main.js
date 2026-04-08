@@ -96,6 +96,15 @@ app.whenReady().then(() => {
     popoutWin.on('closed', () => { popoutWin = null; });
   });
 
+  ipcMain.handle('open-main-window', () => {
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.show();
+      mainWin.focus();
+    } else {
+      createWindow();
+    }
+  });
+
   // Start local server — auto-retries on EADDRINUSE, updates actualPort when bound
   localServer = startLocalServer(PORT, DATA_PATH, mainWin, (port) => { actualPort = port; });
 

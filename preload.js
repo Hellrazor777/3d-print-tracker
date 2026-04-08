@@ -68,4 +68,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   // Pop-out windows
   openPrintersPopout: () => ipcRenderer.invoke('open-printers-popout'),
+  openMainWindow:     () => ipcRenderer.invoke('open-main-window'),
 });

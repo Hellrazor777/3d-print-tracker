@@ -37,7 +37,14 @@ export default function App() {
   if (popoutView === 'printers') {
     return (
       <>
-        <div className="titlebar"><span className="titlebar-title">Printers</span></div>
+        <div className="titlebar" style={{ display: 'flex', alignItems: 'center' }}>
+          <span className="titlebar-title">Printers</span>
+          <button
+            onClick={() => window.electronAPI?.openMainWindow()}
+            title="Open main window"
+            style={{ marginLeft: 'auto', marginRight: 8, fontSize: 11, padding: '2px 10px', borderRadius: 'var(--radius, 6px)', border: '0.5px solid var(--border2)', background: 'var(--bg2)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'inherit' }}
+          >⌂ Main window</button>
+        </div>
         <div className="main">
           <PrintersView />
         </div>
