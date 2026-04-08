@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, shell } = require('electron');
 const path = require('path');
 
 // Installed builds use `productName` ("3D Print Tracker") for the default userData path; `npm start`
@@ -14,7 +14,8 @@ const DATA_PATH = path.join(app.getPath('userData'), 'data.json');
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
 const PORT = 3000;
 let localServer = null;
-let mainWin = null;
+let mainWin   = null;
+let popoutWin = null;
 let actualPort = PORT;
 let printerHandlers = null;
 
@@ -66,6 +67,34 @@ app.whenReady().then(() => {
   registerFilesHandlers(ipcMain, mainWin, dataModule.loadSettings.bind(null, SETTINGS_PATH));
   registerN3dHandlers(ipcMain);
   printerHandlers = registerPrinterHandlers(ipcMain, mainWin, dataModule.loadSettings.bind(null, SETTINGS_PATH));
+
+  // ── Printers pop-out window ────────────────────────────────────────────────
+  ipcMain.handle('open-printers-popout', () => {
+    // If already open, just focus it
+    if (popoutWin && !popoutWin.isDestroyed()) {
+      popoutWin.focus();
+      return;
+    }
+    popoutWin = new BrowserWindow({
+      width: 1100, height: 750, minWidth: 640, minHeight: 480,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+      icon: path.join(__dirname, 'build-resources', 'icon.ico'),
+      title: 'Printers — 3D Print Tracker',
+    });
+    popoutWin.setMenuBarVisibility(false);
+    if (isDev) {
+      popoutWin.loadURL(DEV_URL + '?popout=printers');
+    } else {
+      popoutWin.loadFile(path.join(__dirname, 'dist-web', 'index.html'), {
+        query: { popout: 'printers' },
+      });
+    }
+    popoutWin.on('closed', () => { popoutWin = null; });
+  });
 
   // Start local server — auto-retries on EADDRINUSE, updates actualPort when bound
   localServer = startLocalServer(PORT, DATA_PATH, mainWin, (port) => { actualPort = port; });
