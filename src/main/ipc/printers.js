@@ -707,6 +707,7 @@ function startCameraStream(serial, ip, accessCode) {
         if (frame.length >= 2 && frame[0] === 0xFF && frame[1] === 0xD8) {
           const dataUrl = 'data:image/jpeg;base64,' + frame.toString('base64');
           send('printer-camera-frame', { serial, dataUrl });
+          sendFrameToRelay(serial, frame); // push raw JPEG to cloud relay
         }
       }
     });
@@ -736,6 +737,155 @@ function stopCameraStream(serial) {
 
 function stopAllCameras() {
   Object.keys(cameraConnections).forEach(stopCameraStream);
+}
+
+// ─── Cloud camera relay (WebSocket to cloud server) ──────────────────────────
+//
+// When enabled, the desktop opens a WebSocket connection to the cloud server
+// and pushes raw JPEG frames for every active camera stream.  The cloud server
+// then serves those frames as MJPEG to browser clients — no LAN access needed
+// on the server side.
+//
+// Binary message format (desktop → cloud):
+//   [0..3]  serial length  (uint32 LE)
+//   [4..N]  serial string  (UTF-8)
+//   [N..]   JPEG bytes
+
+const crypto = require('crypto');
+
+let relaySocket         = null;  // raw TCP/TLS socket after WebSocket upgrade
+let relayActive         = false; // true while the user has relay enabled
+let relayReconnectTimer = null;
+
+/**
+ * Minimal WebSocket client using only Node built-ins.
+ * Sends binary frames; no receive handling needed.
+ */
+function wsClientConnect(url, token, onOpen, onClose) {
+  const u = new URL(url);
+  const isSecure = u.protocol === 'wss:';
+  const port = parseInt(u.port) || (isSecure ? 443 : 80);
+  const wsKey = crypto.randomBytes(16).toString('base64');
+
+  const options = {
+    hostname: u.hostname,
+    port,
+    path: u.pathname + (u.search || ''),
+    method: 'GET',
+    rejectUnauthorized: false,
+    headers: {
+      'Upgrade': 'websocket',
+      'Connection': 'Upgrade',
+      'Sec-WebSocket-Key': wsKey,
+      'Sec-WebSocket-Version': '13',
+      'Authorization': `Bearer ${token}`,
+    },
+  };
+
+  const mod = isSecure ? require('https') : require('http');
+  const req = mod.request(options);
+
+  req.on('upgrade', (_res, socket) => {
+    relaySocket = socket;
+    socket.on('error', () => { relaySocket = null; onClose(); });
+    socket.on('close', () => { relaySocket = null; onClose(); });
+    socket.on('end',   () => { relaySocket = null; onClose(); });
+    onOpen();
+  });
+
+  req.on('error', (err) => { onClose(err); });
+  req.setTimeout(10000, () => { req.destroy(); onClose(new Error('Connection timeout')); });
+  req.end();
+}
+
+/**
+ * Send a masked binary WebSocket frame (RFC 6455 — clients must mask).
+ */
+function wsSendFrame(socket, data) {
+  if (!socket || socket.destroyed) return;
+  const len  = data.length;
+  const mask = crypto.randomBytes(4);
+  let hLen = 2;
+  if (len > 65535) hLen += 8;
+  else if (len >= 126) hLen += 2;
+
+  const header = Buffer.alloc(hLen);
+  header[0] = 0x82; // FIN + binary opcode
+  if (len > 65535) {
+    header[1] = 0xFF;
+    header.writeBigUInt64BE(BigInt(len), 2);
+  } else if (len >= 126) {
+    header[1] = 0xFE;
+    header.writeUInt16BE(len, 2);
+  } else {
+    header[1] = 0x80 | len;
+  }
+
+  const masked = Buffer.allocUnsafe(len);
+  for (let i = 0; i < len; i++) masked[i] = data[i] ^ mask[i % 4];
+
+  try { socket.write(Buffer.concat([header, mask, masked])); } catch {}
+}
+
+/** Package serial + JPEG and push to the relay WebSocket. */
+function sendFrameToRelay(serial, jpegBuffer) {
+  if (!relaySocket || relaySocket.destroyed) return;
+  const serialBuf = Buffer.from(serial, 'utf8');
+  const lenBuf    = Buffer.alloc(4);
+  lenBuf.writeUInt32LE(serialBuf.length, 0);
+  wsSendFrame(relaySocket, Buffer.concat([lenBuf, serialBuf, jpegBuffer]));
+}
+
+function startRelay(cloudApiUrl, token) {
+  stopRelay();
+  if (!cloudApiUrl || !token) return;
+  relayActive = true;
+
+  // Convert http(s):// → ws(s):// and add relay path
+  const wsUrl = cloudApiUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/api/camera-relay';
+
+  function attemptConnect() {
+    if (!relayActive) return;
+    wsClientConnect(wsUrl, token,
+      () => {
+        send('camera-relay-status', { connected: true });
+        console.log('[camera-relay] Relay connected to', wsUrl);
+      },
+      (err) => {
+        relaySocket = null;
+        send('camera-relay-status', {
+          connected: false,
+          error: err ? err.message : 'Disconnected',
+        });
+        if (relayActive) {
+          relayReconnectTimer = setTimeout(attemptConnect, 8000);
+        }
+      }
+    );
+  }
+
+  attemptConnect();
+}
+
+function stopRelay() {
+  relayActive = false;
+  clearTimeout(relayReconnectTimer);
+  relayReconnectTimer = null;
+  if (relaySocket) {
+    try {
+      relaySocket.write(Buffer.from([0x88, 0x80, 0, 0, 0, 0])); // WS close frame
+      relaySocket.destroy();
+    } catch {}
+    relaySocket = null;
+  }
+  send('camera-relay-status', { connected: false });
+}
+
+function getRelayStatus() {
+  return {
+    active:    relayActive,
+    connected: relaySocket !== null && !relaySocket.destroyed,
+  };
 }
 
 // ─── Auto-start helper ────────────────────────────────────────────────────────
@@ -1121,6 +1271,28 @@ module.exports = function registerPrinterHandlers(ipcMain, win, loadSettings) {
     stopCameraStream(serial); return { ok: true };
   });
 
+  // ── Camera relay IPC ───────────────────────────────────────────────────────
+  // Start relaying all active camera streams to the cloud server.
+  // cloudApiUrl: base URL of the cloud API, e.g. https://your-app.onrender.com
+  // token:       CAMERA_RELAY_TOKEN configured in the Render environment
+  ipcMain.handle('camera-relay-start', (_, { cloudApiUrl, token }) => {
+    try {
+      startRelay(cloudApiUrl, token);
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('camera-relay-stop', () => {
+    stopRelay();
+    return { ok: true };
+  });
+
+  ipcMain.handle('camera-relay-status', () => {
+    return getRelayStatus();
+  });
+
   return {
     cleanup() {
       cleanupCalled = true;
@@ -1129,6 +1301,7 @@ module.exports = function registerPrinterHandlers(ipcMain, win, loadSettings) {
       clearTimeout(reconnectTimer);
       clearTimeout(lanReconnectTimer);
       stopAllCameras();
+      stopRelay();
       if (mqttClient) { try { mqttClient.end(); } catch {} mqttClient = null; }
       if (lanMqttClient) { try { lanMqttClient.end(); } catch {} lanMqttClient = null; }
       Object.keys(snapPollers).forEach(stopSnapPoll);
