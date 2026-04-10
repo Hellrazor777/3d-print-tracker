@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 
 const MAX_BODY_BYTES = 512 * 1024;
 
@@ -136,6 +137,11 @@ function startLocalServer(PORT, DATA_PATH, mainWin, onListening) {
           else data.inventory.push(update);
 
           fs.writeFileSync(DATA_PATH, JSON.stringify(data), 'utf8');
+          // Also push to cloud (Supabase) so mobile updates reach the cloud db.
+          // Fire-and-forget: local write already succeeded, cloud failure is logged.
+          db.saveData(data, DATA_PATH, fs).catch(err =>
+            console.warn('[server] Cloud sync after mobile POST failed:', err.message)
+          );
           if (mainWin) mainWin.webContents.send('inventory-updated');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));

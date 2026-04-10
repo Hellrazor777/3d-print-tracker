@@ -256,10 +256,25 @@ async function bambuRefresh(refreshToken) {
   return r.data;
 }
 
-async function bambuGetTasks(accessToken, page = 1, limit = 20) {
-  const r = await httpsReq('GET', `https://api.bambulab.com/v1/iot-service/api/user/task?page=${page}&limit=${limit}`,
-    null, { Authorization: `Bearer ${accessToken}` });
-  return r.data;
+async function bambuGetTasks(accessToken, page = 1, limit = 20, region = 'global') {
+  const base = region === 'china' ? 'https://api.bambulab.cn' : 'https://api.bambulab.com';
+  // Try primary endpoint first, then fall back to alternate path
+  const endpoints = [
+    `${base}/v1/iot-service/api/user/task?page=${page}&limit=${limit}`,
+    `${base}/v1/user-service/my/tasks?page=${page}&limit=${limit}`,
+  ];
+  let lastStatus = 0;
+  for (const url of endpoints) {
+    const r = await httpsReq('GET', url, null, { Authorization: `Bearer ${accessToken}` });
+    lastStatus = r.status;
+    if (r.status === 401 || r.status === 403) throw new Error('Auth failed — please disconnect and reconnect your Bambu account');
+    if (r.status === 404) continue; // try next endpoint
+    if (r.status !== 200) throw new Error(`Bambu API returned ${r.status}`);
+    if (r.data?.code !== undefined && r.data.code !== 0) throw new Error(r.data.message || `API code ${r.data.code}`);
+    return r.data;
+  }
+  if (lastStatus === 404) throw new Error('Print history is not available for this Bambu account');
+  throw new Error(`Bambu API returned ${lastStatus}`);
 }
 
 // Parse a Bambu MQTT message into a partial state patch.
@@ -624,8 +639,11 @@ function parseSnapState(id, name, d) {
   };
 }
 
+const snapConfigs = {}; // id → { ip, token } for use by print-cmd handler
+
 function startSnapPoll(printer) {
   const { id, name, ip, token } = printer;
+  snapConfigs[id] = { ip, token };
   stopSnapPoll(id);
   const poll = async () => {
     try {
@@ -898,7 +916,7 @@ function getRelayStatus() {
 function autoStart(loadSettings) {
   const tryStart = async () => {
     try {
-      const settings = loadSettings();
+      const settings = await loadSettings();
       if (!settings) return;
       if (settings.bambuAuth?.accessToken) {
         bambuDevices = settings.bambuAuth.devices || [];
@@ -1224,8 +1242,8 @@ module.exports = function registerPrinterHandlers(ipcMain, win, loadSettings) {
     catch (e) { return { error: e.message }; }
   });
 
-  ipcMain.handle('printer-bambu-get-tasks', async (_, { accessToken, page, limit }) => {
-    try { return await bambuGetTasks(accessToken, page || 1, limit || 20); }
+  ipcMain.handle('printer-bambu-get-tasks', async (_, { accessToken, page, limit, region }) => {
+    try { return await bambuGetTasks(accessToken, page || 1, limit || 20, region || 'global'); }
     catch (e) { return { error: e.message }; }
   });
 
@@ -1280,6 +1298,28 @@ module.exports = function registerPrinterHandlers(ipcMain, win, loadSettings) {
   // Start relaying all active camera streams to the cloud server.
   // cloudApiUrl: base URL of the cloud API, e.g. https://your-app.onrender.com
   // token:       CAMERA_RELAY_TOKEN configured in the Render environment
+  // Print control commands (pause / resume / stop) via MQTT
+  ipcMain.handle('printer-bambu-print-cmd', (_, { serial, cmd }) => {
+    if (!['pause', 'resume', 'stop', 'unload_filament'].includes(cmd)) return { error: 'Invalid command' };
+    if (!mqttClient?.connected) return { error: 'Not connected to Bambu' };
+    const payload = JSON.stringify({ print: { sequence_id: '0', command: cmd, param: '' } });
+    mqttClient.publish(`device/${serial}/request`, payload);
+    return { ok: true };
+  });
+
+  // Snapmaker print control
+  ipcMain.handle('printer-snap-print-cmd', async (_, { id, cmd }) => {
+    const cfg = snapConfigs[id];
+    if (!cfg) return { error: 'Snapmaker not connected' };
+    try {
+      const map = { pause: 'pause_print', resume: 'resume_print', stop: 'stop_print' };
+      const endpoint = map[cmd];
+      if (!endpoint) return { error: 'Invalid command' };
+      const res = await httpReq('POST', `http://${cfg.ip}:7125/printer/print/${endpoint}`, null, cfg.token);
+      return res.status < 300 ? { ok: true } : { error: `HTTP ${res.status}` };
+    } catch (e) { return { error: e.message }; }
+  });
+
   ipcMain.handle('camera-relay-start', (_, { cloudApiUrl, token }) => {
     try {
       startRelay(cloudApiUrl, token);
