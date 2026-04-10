@@ -23,7 +23,7 @@ Permanent context for AI coding agents working in this repo: stack, layout, conv
 ├── preload.js              # contextBridge → window.electronAPI (invoke + subscription cleanup)
 ├── vite.config.js
 ├── package.json
-├── .eslintrc.json          # Node: main/preload/src/main; browser: src/**/*.jsx, src/lib, src/js
+├── .eslintrc.json          # Node: main/preload/src/main; browser: src/**/*.jsx, src/lib
 ├── CLAUDE.md               # This file — agent-oriented project memory
 ├── src/
 │   ├── index.html, main.jsx, App.jsx
@@ -108,6 +108,7 @@ Detailed SQL / Netlify steps were in older notes; re-derive from Supabase docs w
 
 ## Changelog (recent substantive work)
 
+- **Phase 3**: Deleted `src/js/` (13 vanilla JS files). Confirmed dead code — React app loads `src/index.html` via Vite, never referenced `src/js`. Removed `src/js` ESLint override.
 - Renderer **N3D** `fetch` + IPC fallback; modal enabled on web with copy about local-only images.
 - **N3D filters** synced to API enums; link to official API docs.
 - **Inventory phone URL** clarified (host/port + localhost hint).
