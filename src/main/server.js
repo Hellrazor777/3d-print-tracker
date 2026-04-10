@@ -105,11 +105,15 @@ function startLocalServer(PORT, DATA_PATH, mainWin, onListening) {
       req.on('data', chunk => {
         if (tooLarge) return;
         body += chunk;
-        if (body.length > MAX_BODY_BYTES) tooLarge = true;
+        if (body.length > MAX_BODY_BYTES) {
+          tooLarge = true;
+          req.resume(); // drain remaining data so the socket isn't left open
+        }
       });
       req.on('end', () => {
         if (tooLarge) {
           jsonErr(res, 413, 'Request body too large');
+          res.end();
           return;
         }
         try {

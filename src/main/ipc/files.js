@@ -5,6 +5,19 @@ const http = require('http');
 const { dialog, shell, app } = require('electron');
 const { execFile } = require('child_process');
 
+// Sanitise a user-supplied product name into a safe single directory segment.
+// Strips Windows-invalid chars AND path traversal sequences (.. / \) so the
+// result can never escape the configured root folder.
+function safeProductDirName(productName) {
+  return (productName || 'product')
+    .split(/[/\\]/)                         // split on any path separator
+    .filter(seg => seg && seg !== '..')      // drop empty, '.', '..'
+    .join('_')                              // flatten to one name
+    .replace(/[<>:"|?*\x00-\x1f]/g, '_')   // strip Windows-invalid chars
+    .trim()
+    || 'product';
+}
+
 function sanitize3mfFileName(fileName) {
   let s = fileName.trim();
   if (s.startsWith('#')) s = s.slice(1);
@@ -63,6 +76,8 @@ function download3mfToPath(url, destDir, authToken0, authToken1, redirectCount =
   });
 }
 
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB cap
+
 function downloadImageToPath(url, destPath, redirectCount = 0) {
   return new Promise((resolve, reject) => {
     if (redirectCount > 5) {
@@ -73,7 +88,8 @@ function downloadImageToPath(url, destPath, redirectCount = 0) {
     const lib = url.startsWith('https') ? https : http;
     const file = fs.createWriteStream(destPath);
     const request = lib.get(url, res => {
-      if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+      // Follow all standard redirect codes (301, 302, 303, 307, 308)
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
         file.destroy();
         fs.unlink(destPath, () => {});
         const nextUrl = res.headers.location.startsWith('http')
@@ -92,6 +108,17 @@ function downloadImageToPath(url, destPath, redirectCount = 0) {
         return;
       }
 
+      // Enforce streaming size cap
+      let received = 0;
+      res.on('data', chunk => {
+        received += chunk.length;
+        if (received > MAX_IMAGE_BYTES) {
+          res.destroy();
+          file.destroy();
+          fs.unlink(destPath, () => {});
+          reject(new Error('Image too large (> 20 MB)'));
+        }
+      });
       res.pipe(file);
       file.on('finish', () => {
         file.close(resolve);
@@ -142,7 +169,7 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
     if (result.canceled || !result.filePaths.length) return null;
     const srcPath = result.filePaths[0];
     const fileName = path.basename(srcPath);
-    const safeName = productName.replace(/[<>:"\/\\|?*]/g, '_');
+    const safeName = safeProductDirName(productName);
     try {
       const productFolder = path.join(destFolder, safeName);
       if (!fs.existsSync(productFolder)) fs.mkdirSync(productFolder, { recursive: true });
@@ -161,7 +188,7 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
   // ── Get/create product folder ──
   ipcMain.handle('get-product-folder', (_, { productName, rootFolder }) => {
     if (!rootFolder) return null;
-    const safeName = productName.replace(/[<>:"\/\\|?*]/g, '_');
+    const safeName = safeProductDirName(productName);
     const folderPath = path.join(rootFolder, safeName);
     try { if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true }); }
     catch(e) { console.error('Could not create folder:', e.message); }
@@ -171,7 +198,7 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
   // ── Create product folder on product creation ──
   ipcMain.handle('create-product-folder', (_, { productName, rootFolder }) => {
     if (!rootFolder || !productName) return null;
-    const safeName = productName.replace(/[<>:"\/\\|?*]/g, '_');
+    const safeName = safeProductDirName(productName);
     const folderPath = path.join(rootFolder, safeName);
     try {
       if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
@@ -277,12 +304,13 @@ module.exports = function registerFilesHandlers(ipcMain, mainWin, loadSettings) 
   // ── Get Bambu Studio version ──
   ipcMain.handle('get-bambu-version', async (_, exePath) => {
     if (!exePath || !fs.existsSync(exePath)) return null;
-    const safePath = exePath.replace(/'/g, "''");
+    // Pass the path via an environment variable so no string interpolation into
+    // the PowerShell command is needed — eliminates backtick/injection risk.
     return new Promise(resolve => {
       execFile('powershell', [
         '-NoProfile', '-NonInteractive', '-Command',
-        `(Get-Item '${safePath}').VersionInfo.FileVersion`
-      ], { timeout: 8000 }, (err, stdout) => {
+        '(Get-Item $env:BAMBU_EXE_PATH).VersionInfo.FileVersion'
+      ], { timeout: 8000, env: { ...process.env, BAMBU_EXE_PATH: exePath } }, (err, stdout) => {
         resolve(err ? null : (stdout.trim() || null));
       });
     });

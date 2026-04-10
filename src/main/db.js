@@ -18,7 +18,7 @@ const dbReadyPromise = (async () => {
     const { Pool } = require('pg');
     const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      ssl: true, // Supabase provides a valid certificate — verify it
       connectionTimeoutMillis: 5000,
     });
     await pool.query('SELECT 1');
