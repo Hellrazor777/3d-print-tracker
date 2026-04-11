@@ -213,12 +213,12 @@ async function apiFetch(path, options = {}) {
   }
 }
 
-// ─── TempGauge (circular arc gauge, v3) ──────────────────────────────────────
+// ─── TempGauge ────────────────────────────────────────────────────────────────
 
 function TempGauge({ label, current, target }) {
   const r = 26, cx = 32, cy = 32;
-  const circ   = 2 * Math.PI * r;
-  const arcLen = circ * 0.75;           // 270° arc
+  const circ  = 2 * Math.PI * r;   // full circumference
+  const arcLen = circ * 0.75;       // 270° arc
   const pct    = target > 0 ? Math.min(current / target, 1) : 0;
   const filled = arcLen * pct;
   const atTarget = target > 0 && current >= target - 3;
@@ -778,8 +778,13 @@ function InlineCameraFeed({ serial, device, storedIp, storedCode, onSaveConfig, 
   const applyConfig = () => {
     if (!ip.trim()) return;
     setEditing(false); setOn(true); setError('');
-    if (isElectron) startEl(ip.trim(), code.trim());
-    else setMjpegKey(k => k + 1);
+    if (isElectron) {
+      startEl(ip.trim(), code.trim());
+    } else {
+      // Persist the IP and access code so they survive a page refresh
+      onSaveConfig(ip.trim(), code.trim());
+      setMjpegKey(k => k + 1);
+    }
   };
 
   return (
