@@ -899,7 +899,9 @@ function stopRelay() {
   relayReconnectTimer = null;
   if (relaySocket) {
     try {
-      relaySocket.write(Buffer.from([0x88, 0x80, 0, 0, 0, 0])); // WS close frame
+      // RFC 6455 close frame: opcode 0x88, masked (0x80), payload len 0, random 4-byte mask
+      const closeMask = crypto.randomBytes(4);
+      relaySocket.write(Buffer.from([0x88, 0x80, closeMask[0], closeMask[1], closeMask[2], closeMask[3]]));
       relaySocket.destroy();
     } catch {}
     relaySocket = null;

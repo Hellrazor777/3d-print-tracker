@@ -106,7 +106,7 @@ app.whenReady().then(() => {
   });
 
   // Start local server — auto-retries on EADDRINUSE, updates actualPort when bound
-  localServer = startLocalServer(PORT, DATA_PATH, mainWin, (port) => { actualPort = port; });
+  localServer = startLocalServer(PORT, DATA_PATH, mainWin, (port) => { actualPort = port; }, SETTINGS_PATH);
 
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

@@ -32,21 +32,25 @@ const dbReadyPromise = (async () => {
 
 // ─── Local file helpers ───────────────────────────────────────────────────────
 
+function atomicWrite(filePath, json, fs) {
+  const tmp = filePath + '.tmp';
+  fs.writeFileSync(tmp, json, 'utf8');
+  fs.renameSync(tmp, filePath);
+}
+
 function writeLocalData(data, localPath, fs) {
   try {
-    const bakPath = localPath + '.bak';
-    if (fs.existsSync(localPath)) fs.copyFileSync(localPath, bakPath);
-    fs.writeFileSync(localPath, JSON.stringify(data), 'utf8');
+    atomicWrite(localPath, JSON.stringify(data), fs);
   } catch (err) {
-    console.warn('[db] Local backup write failed:', err.message);
+    console.warn('[db] Local data write failed:', err.message);
   }
 }
 
 function writeLocalSettings(settings, settingsPath, fs) {
   try {
-    fs.writeFileSync(settingsPath, JSON.stringify(settings), 'utf8');
+    atomicWrite(settingsPath, JSON.stringify(settings), fs);
   } catch (err) {
-    console.warn('[db] Local settings backup write failed:', err.message);
+    console.warn('[db] Local settings write failed:', err.message);
   }
 }
 

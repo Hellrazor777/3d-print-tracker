@@ -81,7 +81,7 @@ function validateInventoryUpdate(raw) {
   return { ok: true, item };
 }
 
-function startLocalServer(PORT, DATA_PATH, mainWin, onListening) {
+function startLocalServer(PORT, DATA_PATH, mainWin, onListening, SETTINGS_PATH) {
   const mobileHtmlPath = path.join(__dirname, '..', 'mobile.html');
   const localServer = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -93,6 +93,15 @@ function startLocalServer(PORT, DATA_PATH, mainWin, onListening) {
     if (req.method === 'GET' && url.pathname === '/data') {
       try {
         const data = fs.existsSync(DATA_PATH) ? JSON.parse(fs.readFileSync(DATA_PATH, 'utf8')) : {};
+        // Inject outgoing destinations from settings so mobile UI renders custom dests dynamically
+        if (SETTINGS_PATH && fs.existsSync(SETTINGS_PATH)) {
+          try {
+            const settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+            if (Array.isArray(settings.outgoingDests) && settings.outgoingDests.length) {
+              data._outgoingDests = settings.outgoingDests;
+            }
+          } catch {}
+        }
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' });
         res.end(JSON.stringify(data));
       } catch(e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })); }
