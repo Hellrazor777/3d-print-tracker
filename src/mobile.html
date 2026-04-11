@@ -348,9 +348,7 @@ async function adjustStocktake(id, delta) {
   if (!item || !stocktakeLocation) return;
   if (!item.storage) item.storage = {};
   const newVal = Math.max(0, (item.storage[stocktakeLocation]||0) + delta);
-  const diff = newVal - (item.storage[stocktakeLocation]||0);
   item.storage[stocktakeLocation] = newVal;
-  item.built = Math.max(0, (item.built||0) + diff);
   const el = document.getElementById('st-' + id);
   if (el) el.textContent = newVal;
   await saveItem(item);
