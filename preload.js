@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadSettings:        ()                          => ipcRenderer.invoke('load-settings'),
   saveSettings:        (s)                         => ipcRenderer.invoke('save-settings', s),
   isUsingCloud:        ()                          => ipcRenderer.invoke('is-using-cloud'),
+  connectToCloud:      (url)                       => ipcRenderer.invoke('connect-to-cloud', url),
+  disconnectFromCloud: ()                          => ipcRenderer.invoke('disconnect-from-cloud'),
   pushLocalToCloud:    ()                          => ipcRenderer.invoke('push-local-to-cloud'),
   pick3mfFolder:       ()                          => ipcRenderer.invoke('pick-3mf-folder'),
   upload3mf:           (productName, destFolder)   => ipcRenderer.invoke('upload-3mf', { productName, destFolder }),

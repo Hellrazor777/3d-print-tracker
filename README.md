@@ -2,6 +2,8 @@
 
 A desktop application for tracking 3D printing projects, parts, filament colours and inventory — built with Electron for Windows.
 
+Optional cloud sync lets you view your tracker from any browser via a hosted web app.
+
 ---
 
 ## Features
@@ -18,6 +20,15 @@ A desktop application for tracking 3D printing projects, parts, filament colours
 - Expand / collapse all products per category section
 - Category reordering in Settings reflects directly on the main screen
 - Main screen search — filter by product name, category or part name
+
+### Printer Monitoring
+- Connect to your **Bambu Lab** printers via Bambu Cloud
+- Live printer status — temperature, progress, remaining time, filament colour
+- Dial gauges per printer with bed and nozzle temperatures
+- Print controls — pause, resume, stop
+- Live camera feed per printer (LAN mode)
+- Print history from Bambu Cloud
+- Dashboard stat counters: Printers Printing / Printers Idle
 
 ### 3MF File Management
 - Upload pre-sliced .3MF files organised into per-product folders
@@ -55,41 +66,35 @@ A desktop application for tracking 3D printing projects, parts, filament colours
 - Real-time sync back to the desktop app
 - Auto-retries if port 3000 is in use (tries up to 3010)
 
+### Cloud Sync *(optional)*
+- Sync your tracker to a hosted web app accessible from any browser
+- Set up in **Settings → Cloud Sync** — no command line needed
+- Live camera relay — stream LAN printer cameras through to the cloud app
+
 ---
 
 ## Requirements
 
 - Windows 10 or later
-- [Node.js LTS](https://nodejs.org) — for building only
+- [Node.js LTS](https://nodejs.org) — only needed if building from source
 
 ---
 
 ## Installation
 
-### Option 1 — Download the installer
-Download the latest `3D Print Tracker Setup 3.0.0.exe` from the [Releases](../../releases) page and run it.
+### Option 1 — Download the installer *(recommended)*
+Download the latest `3D Print Tracker Setup.exe` from the [Releases](../../releases) page and run it. No Node.js required.
 
 ### Option 2 — Build from source
 
 ```bash
-# Clone the repository
 git clone https://github.com/Hellrazor777/3d-print-tracker.git
 cd 3d-print-tracker
-
-# Install dependencies
 npm install
-
-# Dev mode — Vite dev server + Electron with hot reload
-npm run dev
-
-# Dev mode — browser only (no Electron)
-npm run dev:web
-
-# Build the Windows installer
 npm run build
 ```
 
-The installer will be at `dist/3D Print Tracker Setup 3.0.0.exe`.
+The installer will be at `dist/3D Print Tracker Setup.exe`.
 
 ---
 
@@ -98,7 +103,16 @@ The installer will be at `dist/3D Print Tracker Setup 3.0.0.exe`.
 1. **Set your 3MF folder** — click ⚙ Settings and choose a root folder for .3MF files. A subfolder is created automatically for each product.
 2. **Set your slicer** — choose Bambu Studio or Orca Slicer in Settings. Set a custom path if installed in a non-default location.
 3. **Configure storage locations** — go to Settings → Inventory to name your storage locations (e.g. Box, Shelf, Display).
-4. **N3D API key** — if you have an N3D Melbourne membership, click **N3D browse** and enter your API key from [n3dmelbourne.com/dashboard/tools](https://www.n3dmelbourne.com/dashboard/tools?tab=api).
+4. **N3D API key** — if you have an N3D Melbourne membership, click **N3D Browse** and enter your API key from [n3dmelbourne.com/dashboard/tools](https://www.n3dmelbourne.com/dashboard/tools?tab=api).
+
+---
+
+## Printer Monitoring (Bambu Lab)
+
+1. Click the **Printers** tab
+2. Click **Connect Bambu** and log in with your Bambu Lab account
+3. Your printers appear automatically — no IP addresses needed
+4. For live camera feeds, enter the printer's LAN IP and access code on the printer card
 
 ---
 
@@ -109,7 +123,27 @@ The installer will be at `dist/3D Print Tracker Setup 3.0.0.exe`.
 3. Type that URL into your phone's browser (e.g. `http://192.168.1.x:3000`)
 4. Bookmark it to your home screen for quick access
 
-**Accessing from outside your home network:** Install [Tailscale](https://tailscale.com) (free) on both your PC and phone. Once connected, your phone can reach the companion app from anywhere — no code changes or port forwarding needed.
+**Accessing from outside your home network:** Install [Tailscale](https://tailscale.com) (free) on both your PC and phone. Once connected, your phone can reach the companion app from anywhere — no port forwarding needed.
+
+---
+
+## Cloud Sync Setup *(optional)*
+
+Cloud sync lets you view your tracker from any browser — useful for checking from your phone or another computer.
+
+**What you need:**
+- A free [Supabase](https://supabase.com) account (database)
+- A free [Render](https://render.com) account (hosting) — or see the [cloud repo](https://github.com/Hellrazor777/3d-print-tracker-cloud) for deployment instructions
+
+**Steps:**
+1. Create a new project at [supabase.com](https://supabase.com)
+2. Go to **Project Settings → Database → Connection string → URI** and copy the connection string
+3. In the desktop app, open **Settings → Cloud Sync**
+4. Paste the connection string and click **Connect** — the database table is created automatically
+5. Click **↑ Push local to cloud** to send your existing data up
+6. Deploy the [cloud web app](https://github.com/Hellrazor777/3d-print-tracker-cloud) to Render and set `DATABASE_URL` to the same connection string
+
+From then on, every change in the desktop app syncs to the cloud automatically.
 
 ---
 
@@ -132,10 +166,21 @@ Back up these files to preserve your data across reinstalls.
 - [React](https://react.dev/) 18 + [Vite](https://vitejs.dev/) v5 — UI framework and build tool
 - [electron-builder](https://www.electron.build/) — Windows installer packaging
 - Node.js `http` / `https` — local mobile server and N3D API proxy
+- [Supabase](https://supabase.com) (PostgreSQL) — optional cloud database
+- [Render](https://render.com) — optional cloud hosting
 
 ---
 
 ## Changelog
+
+### v4.0.0
+- **Printer monitoring** — live Bambu Lab printer status, dial gauges, camera feeds, print controls and history
+- **Cloud sync** — paste a Supabase connection string in Settings → Cloud Sync; no environment variables or command line needed
+- **Auto database setup** — Supabase table created automatically on first connect; no manual SQL required
+- **Camera relay** — stream LAN printer cameras to the cloud web app via desktop relay
+- **RTSP camera support** — H2D, H2S, X1C and P2S printers stream via RTSPS (ffmpeg)
+- **Ready to Build badge fix** — badge now correctly reflects actual part statuses
+- **Cloud web app** — companion hosted web app accessible from any browser
 
 ### v3.0.0
 - **React/Vite migration** — renderer rewritten in React 18 + Vite v5; modular component/view/modal structure
@@ -162,7 +207,6 @@ Back up these files to preserve your data across reinstalls.
 - **Mobile: Stocktake mode** — location-filtered count view with search and +/- per item
 - **Mobile server auto-retry** — if port 3000 is taken, tries 3001–3010 automatically; phone URL always shows the right port
 - **Status badges** — brighter, more vivid colours with solid borders for better readability
-- N3D references updated from Patreon to N3D website membership
 
 ### v2.1.0
 - Capitalised all toolbar buttons, tab labels and stat headings
