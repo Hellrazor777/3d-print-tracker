@@ -125,6 +125,26 @@ export function AppProvider({ children }) {
         initInventory = [];
         initNextId = 8;
       }
+      // Auto-add any product (active or archived) that has no inventory entry yet
+      const invNames = new Set(initInventory.map(i => i.name));
+      const allProductNames = Object.keys(initProducts);
+      const missing = allProductNames.filter(n => !invNames.has(n));
+      if (missing.length) {
+        let t = Date.now();
+        missing.forEach(n => {
+          initInventory = [...initInventory, {
+            id: 'inv_' + (t++),
+            name: n,
+            category: initProducts[n]?.category || '',
+            built: 0,
+            location: '',
+            storage: {},
+            distributions: [],
+            source: 'auto',
+          }];
+        });
+      }
+
       setParts(initParts);
       setProducts(initProducts);
       setInventory(initInventory);
@@ -467,6 +487,11 @@ export function AppProvider({ children }) {
   const saveAddProduct = useCallback(({ name, category, description, shiny, designer, source, imagePath }) => {
     setProducts(prev => ({ ...prev, [name]: { category: category || '', description: description || '', shiny: !!shiny, designer: designer || '', source: source || '', imagePath: imagePath || '' } }));
     setOpenProducts(prev => { const next = new Set(prev); next.add(name); return next; });
+    // Auto-create an inventory entry with no quantity so it shows up in Inventory immediately
+    setInventory(prev => {
+      if (prev.some(i => i.name === name)) return prev; // already exists
+      return [...prev, { id: 'inv_' + Date.now(), name, category: category || '', built: 0, location: '', storage: {}, distributions: [], source: 'auto' }];
+    });
     closeModal();
   }, [closeModal]);
 
