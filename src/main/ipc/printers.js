@@ -1463,7 +1463,10 @@ module.exports = function registerPrinterHandlers(ipcMain, win, loadSettings) {
   ipcMain.handle('printer-bambu-print-cmd', (_, { serial, cmd }) => {
     if (!['pause', 'resume', 'stop', 'unload_filament'].includes(cmd)) return { error: 'Invalid command' };
     if (!mqttClient?.connected) return { error: 'Not connected to Bambu' };
-    const payload = JSON.stringify({ print: { sequence_id: '0', command: cmd, param: '' } });
+    // unload_filament uses the AMS unload command; pause/resume/stop use the print command
+    const payload = cmd === 'unload_filament'
+      ? JSON.stringify({ print: { sequence_id: '0', command: 'ams_change_filament', target: 255, curr_temp: 0, tar_temp: 0 } })
+      : JSON.stringify({ print: { sequence_id: '0', command: cmd, param: '' } });
     mqttClient.publish(`device/${serial}/request`, payload);
     return { ok: true };
   });
