@@ -1461,12 +1461,19 @@ module.exports = function registerPrinterHandlers(ipcMain, win, loadSettings) {
   // token:       CAMERA_RELAY_TOKEN configured in the Render environment
   // Print control commands (pause / resume / stop) via MQTT
   ipcMain.handle('printer-bambu-print-cmd', (_, { serial, cmd }) => {
-    if (!['pause', 'resume', 'stop', 'unload_filament'].includes(cmd)) return { error: 'Invalid command' };
+    if (!['pause', 'resume', 'stop', 'unload_filament', 'unload_filament_external', 'clean_print_error'].includes(cmd)) return { error: 'Invalid command' };
+    // Build correct payload per command
+    let payload;
+    if (cmd === 'unload_filament')               payload = JSON.stringify({ print: { sequence_id: '0', command: 'ams_unload', param: '' } });
+    else if (cmd === 'unload_filament_external') payload = JSON.stringify({ print: { sequence_id: '0', command: 'unload_filament', param: '' } });
+    else                                         payload = JSON.stringify({ print: { sequence_id: '0', command: cmd, param: '' } });
+    // Use LAN MQTT if this serial matches the LAN-connected printer, otherwise use cloud MQTT
+    const isLan = lanMqttClient?.connected && lanPrinter?.serial === serial;
+    if (isLan) {
+      lanMqttClient.publish(`device/${serial}/request`, payload);
+      return { ok: true };
+    }
     if (!mqttClient?.connected) return { error: 'Not connected to Bambu' };
-    // unload_filament uses the AMS unload command; pause/resume/stop use the print command
-    const payload = cmd === 'unload_filament'
-      ? JSON.stringify({ print: { sequence_id: '0', command: 'ams_change_filament', target: 255, curr_temp: 0, tar_temp: 0 } })
-      : JSON.stringify({ print: { sequence_id: '0', command: cmd, param: '' } });
     mqttClient.publish(`device/${serial}/request`, payload);
     return { ok: true };
   });
