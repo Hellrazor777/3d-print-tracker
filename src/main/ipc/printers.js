@@ -836,15 +836,33 @@ function startCameraStreamRtsp(serial, ip, accessCode) {
 
   const proc = spawn(ffmpegPath, [
     '-rtsp_transport', 'tcp',
+    '-tls_verify',    '0',          // Bambu printers use self-signed certs
+    '-timeout',       '10000000',   // 10 s connection timeout (microseconds)
     '-i',             rtspUrl,
     '-vf',            'fps=10',
     '-f',             'mjpeg',
     '-q:v',           '5',
     'pipe:1',
-  ], { stdio: ['ignore', 'pipe', 'ignore'] });
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });  // pipe stderr so we can report errors
 
   const conn = { proc, active: true };
   cameraConnections[serial] = conn;
+
+  // Capture ffmpeg stderr for diagnostics — forward first meaningful line as error
+  let stderrBuf = '';
+  proc.stderr.on('data', (chunk) => {
+    stderrBuf += chunk.toString();
+  });
+
+  // Watchdog: if no frame arrives within 20 s, kill ffmpeg and report
+  const watchdog = setTimeout(() => {
+    if (conn.active && cameraConnections[serial] === conn) {
+      const hint = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error') || l.includes('failed') || l.includes('refused')).slice(-1)[0] || 'no frames received';
+      send('printer-camera-frame', { serial, error: `Camera timed out — ${hint.trim()}` });
+      stopCameraStream(serial);
+    }
+  }, 20000);
+  conn.watchdog = watchdog;
 
   // Parse MJPEG frames from ffmpeg stdout by scanning for JPEG SOI/EOI markers.
   const SOI = Buffer.from([0xFF, 0xD8]);
@@ -872,6 +890,8 @@ function startCameraStreamRtsp(serial, ip, accessCode) {
       lastSent = now;
 
       const dataUrl = 'data:image/jpeg;base64,' + frame.toString('base64');
+      // Clear the startup watchdog once we have a frame
+      if (conn.watchdog) { clearTimeout(conn.watchdog); conn.watchdog = null; }
       send('printer-camera-frame', { serial, dataUrl });
       sendFrameToRelay(serial, frame);
     }
@@ -890,8 +910,11 @@ function startCameraStreamRtsp(serial, ip, accessCode) {
   });
 
   proc.on('close', (code) => {
+    if (conn.watchdog) clearTimeout(conn.watchdog);
     if (conn.active) {
-      send('printer-camera-frame', { serial, error: `Camera stream ended (ffmpeg exit ${code})` });
+      const errLine = stderrBuf.split('\n').filter(l => l.includes('Error') || l.includes('error') || l.includes('failed') || l.includes('refused') || l.includes('Invalid')).slice(-1)[0];
+      const detail = errLine ? `: ${errLine.trim()}` : '';
+      send('printer-camera-frame', { serial, error: `Camera stream ended (ffmpeg exit ${code})${detail}` });
     }
     delete cameraConnections[serial];
   });
